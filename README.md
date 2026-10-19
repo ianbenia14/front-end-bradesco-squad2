@@ -1,75 +1,66 @@
-# React + TypeScript + Vite
+# Saldo+ — Front-end (React + TypeScript + Vite)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Sistema de Gestão Financeira Pessoal (Squad 2 — TakeOff). Protótipo de interface em React com telas de login, painel e transações, usando dados de exemplo.
 
-Currently, two official plugins are available:
+## Como rodar no VS Code
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. **Pré-requisito:** Node.js 20 ou superior (LTS) instalado — https://nodejs.org
+2. **Abrir o projeto:** `File > Open Folder` e escolha a pasta que contém o `package.json` (a pasta interna `front_saldo+`).
+3. **Instalar dependências:** abra o terminal (`Terminal > New Terminal`) e rode `npm install`.
+4. **Rodar:** `npm run dev`. O app sobe em http://localhost:5173. Se a porta estiver ocupada, o Vite usa a próxima (5174, por exemplo) e mostra o endereço no terminal.
+5. **Gerar versão final:** `npm run build` (confere o TypeScript e gera a pasta `dist`).
+6. **Verificar o código:** `npm run lint`.
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Para clonar do GitHub:
 
 ```
+git clone https://github.com/ianbenia14/front-end.git
+cd front-end
+npm install
+npm run dev
+```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+## Tecnologias
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+React 19, TypeScript, Vite, CSS (`estilos.css`) e ESLint.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Estrutura
 
 ```
+src/
+  componentes/   Botao, CamposFormulario, Cartoes, Icones, LogoMenuCabecalho (menu lateral)
+  dados/         transacoesExemplo (dados fictícios)
+  paginas/
+    Login/       TelaLogin (entrar / criar conta)
+    Painel/      TelaPainel (dashboard)
+    Transacoes/  TelaTransacoes e ListaTransacoes
+  tipos/         tipos TypeScript (Screen, Transaction)
+  utilitarios/   funções auxiliares (formatacao)
+  App.tsx        controla qual tela aparece e guarda as transações
+  main.tsx       ponto de entrada
+  estilos.css    estilos globais
+public/          favicon e ícones
+```
+
+## Telas
+
+| Tela | O que faz |
+|------|-----------|
+| Login | entrar ou criar conta, mostrar/ocultar senha, "Lembrar de mim" e "Esqueci minha senha" (só no login) |
+| Painel | visão geral das finanças |
+| Transações | lista as transações do usuário |
+
+## Como funciona a navegação
+
+Não há rotas nem URLs por tela. O `App.tsx` guarda a tela atual em um estado (`login`, `dashboard` ou `transactions`) e mostra o menu lateral junto com a tela escolhida, exceto no login.
+
+## Integração com o back-end
+
+Ainda não está integrado. A API do Finanças Lite (Java + Spring Boot, em `http://localhost:8080`) está em outro projeto e será consumida por este front em uma próxima etapa.
+
+## O que ainda NÃO existe
+
+- Backend / API conectada — as transações vêm de `dados/transacoesExemplo`.
+- Autenticação real — o login só troca de tela, sem validar usuário e senha.
+- Persistência — os dados voltam ao padrão ao recarregar a página.
+- Finalziar as demais páginas.
