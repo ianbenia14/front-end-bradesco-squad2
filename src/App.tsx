@@ -1,32 +1,48 @@
-// Raiz do app: controla qual tela aparece e guarda as transações
 import { useState } from "react"
-import { Sidebar } from "./componentes/LogoMenuCabecalho"
-import Login from "./paginas/Login/TelaLogin"
-import Dashboard from "./paginas/Painel/TelaPainel"
-import Transactions from "./paginas/Transacoes/TelaTransacoes"
-import { transactions } from "./dados/transacoesExemplo"
-import type { Screen, Transaction } from "./tipos/tipos"
+import type { Budget, Goal, Screen, Transaction } from "./tipos"
+import { initialGoals } from "./dados/metas"
+import { initialBudgets } from "./dados/orcamentos"
+import { transactions } from "./dados/transacoes"
+import { BarraLateral } from "./componentes/BarraLateral"
+import { Login } from "./paginas/Login"
+import { Metas } from "./paginas/Metas"
+import { Orcamentos } from "./paginas/Orcamentos"
+import { Painel } from "./paginas/Painel"
+import { Relatorios } from "./paginas/Relatorios"
+import { Transacoes } from "./paginas/Transacoes"
 
 export default function App() {
-  // ===== ESTADO DO APP =====
-  // Tela atual: "login", "dashboard" ou "transactions"
   const [screen, setScreen] = useState<Screen>("login")
-  // Lista de transações (compartilhada entre Painel e Transações)
-  const [items, setItems] = useState<Transaction[]>(transactions)
-
-  // Se estiver na tela de login, mostra só o login (sem menu)
-  if (screen === "login") return <Login onLogin={() => setScreen("dashboard")} />
-
-  // ===== LAYOUT DO APP (MENU + CONTEÚDO) =====
-  // ESTRUTURA DO APP LOGADO: menu lateral + área principal
+  const [transactionItems, setTransactionItems] =
+    useState<Transaction[]>(transactions)
+  const [budgetItems, setBudgetItems] = useState<Budget[]>(initialBudgets)
+  const [goalItems, setGoalItems] = useState<Goal[]>(initialGoals)
+  if (screen === "login")
+    return <Login onLogin={() => setScreen("dashboard")} />
   return (
     <div className="app-shell">
-      {/* MENU LATERAL (esquerda) */}
-      <Sidebar screen={screen} setScreen={setScreen} />
-      {/* ÁREA PRINCIPAL (direita): troca de tela conforme o menu */}
+      <BarraLateral screen={screen} setScreen={setScreen} />
       <main className="main-area">
-        {screen === "dashboard" && <Dashboard navigate={setScreen} items={items} />}
-        {screen === "transactions" && <Transactions items={items} setItems={setItems} />}
+        {screen === "dashboard" && (
+          <Painel navigate={setScreen} items={transactionItems} />
+        )}
+        {screen === "transactions" && (
+          <Transacoes
+            items={transactionItems}
+            setItems={setTransactionItems}
+          />
+        )}
+        {screen === "budgets" && (
+          <Orcamentos
+            items={budgetItems}
+            setItems={setBudgetItems}
+            transactionItems={transactionItems}
+          />
+        )}
+        {screen === "goals" && (
+          <Metas items={goalItems} setItems={setGoalItems} />
+        )}
+        {screen === "reports" && <Relatorios items={transactionItems} />}
       </main>
     </div>
   )

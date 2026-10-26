@@ -1,8 +1,4 @@
-import type React from "react"
-// Botão padrão (primary | secondary | ghost)
-// ===== BOTÃO =====
-// BOTÃO PADRÃO. variant: primary (verde), secondary (branco) ou ghost (transparente)
-export function Button({
+export function Botao({
   children,
   variant = "primary",
   className = "",

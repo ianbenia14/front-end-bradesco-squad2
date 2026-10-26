@@ -1,9 +1,6 @@
-// Ícones SVG do app
 import type { ReactNode } from "react"
-import type { IconName } from "../tipos/tipos"
+import type { IconName } from "../tipos"
 
-// ===== ÍCONES =====
-// Desenho (SVG) de cada ícone. Para criar um novo: adicione aqui e em IconName (types)
 const iconPaths: Record<IconName, ReactNode> = {
   "arrow-down": <path d="m7 10 5 5 5-5M12 15V4" />,
   "arrow-up": <path d="m7 9 5-5 5 5M12 4v11" />,
@@ -115,8 +112,7 @@ const iconPaths: Record<IconName, ReactNode> = {
   x: <path d="m6 6 12 12M18 6 6 18" />,
 }
 
-// COMPONENTE ÍCONE: <Icon name="wallet" size={20} />
-export default function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
+export function Icone({ name, size = 20 }: { name: IconName; size?: number }) {
   return (
     <svg
       aria-hidden="true"

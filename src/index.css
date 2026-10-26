@@ -1,5 +1,4 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap");
-@import "tailwindcss";
 
 :root {
   font-family: "DM Sans", sans-serif;
@@ -248,3 +247,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .row-menu button { border: 0; background: transparent; text-align: left; padding: 10px 12px; border-radius: 8px; font: inherit; font-size: 13px; color: #12202b; cursor: pointer; }
 .row-menu button:hover { background: #f1f5f7; }
 .row-menu .danger { color: #b45309; }
+
+/* Ajustes para rodar sem Tailwind */
+.shrink-0 { flex-shrink: 0; }
+.button:disabled { opacity: .5; cursor: not-allowed; transform: none; }

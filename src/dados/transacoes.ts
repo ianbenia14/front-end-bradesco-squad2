@@ -1,5 +1,4 @@
-// Dados de exemplo (mock) das transações
-import type { Transaction, IconName } from "../tipos/tipos"
+import type { IconName, Transaction } from "../tipos"
 
 export const transactions: Transaction[] = [
   {

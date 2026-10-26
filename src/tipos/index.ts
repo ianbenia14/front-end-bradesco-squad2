@@ -1,10 +1,7 @@
-// Tipos compartilhados pelo app
-// ===== TIPOS =====
-// Telas que existem no app (adicione aqui ao criar uma nova)
-export type Screen = "login" | "dashboard" | "transactions"
-// Nomes dos ícones disponíveis
+export type Screen = "login" | "dashboard" | "transactions" | "budgets" | "goals" | "reports"
+
 export type IconName = "arrow-down" | "arrow-up" | "bell" | "calendar" | "chart" | "check" | "chevron" | "dashboard" | "eye" | "flag" | "food" | "goal" | "home" | "logout" | "menu" | "plus" | "report" | "search" | "settings" | "shopping" | "transaction" | "transport" | "wallet" | "x"
-// Formato de uma transação (receita ou despesa)
+
 export type Transaction = {
   id: number
   title: string
@@ -13,4 +10,24 @@ export type Transaction = {
   amount: number
   type: "income" | "expense"
   icon: IconName
+}
+
+export type Budget = {
+  id: number
+  category: string
+  icon: IconName
+  spent: number
+  baseline: number
+  limit: number
+  color: string
+}
+
+export type Goal = {
+  id: number
+  name: string
+  icon: IconName
+  saved: number
+  target: number
+  deadline: string
+  color: string
 }
