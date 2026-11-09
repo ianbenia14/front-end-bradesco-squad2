@@ -1,6 +1,8 @@
+import { iniciais, useUsuario } from "../contexto/usuario"
 import { Icone } from "./Icone"
 
 export function Cabecalho({ title, subtitle }: { title: string; subtitle: string }) {
+  const user = useUsuario()
   return (
     <header className="topbar">
       <div>
@@ -11,7 +13,7 @@ export function Cabecalho({ title, subtitle }: { title: string; subtitle: string
         <button className="icon-button" aria-label="Notificações">
           <Icone name="bell" />
         </button>
-        <span className="mini-avatar">AM</span>
+        <span className="mini-avatar">{iniciais(user.name)}</span>
       </div>
     </header>
   )

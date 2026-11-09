@@ -6,12 +6,14 @@ export function CartaoEstatistica({
   label,
   value,
   trend,
+  hint,
   icon,
   tone = "green",
 }: {
   label: string
   value: string
-  trend: string
+  trend?: string
+  hint?: string
   icon: IconName
   tone?: string
 }) {
@@ -23,13 +25,17 @@ export function CartaoEstatistica({
       <div className="stat-copy">
         <span>{label}</span>
         <strong>{value}</strong>
-        <small className={trend.startsWith("+") ? "positive" : "negative"}>
-          <Icone
-            name={trend.startsWith("+") ? "arrow-up" : "arrow-down"}
-            size={14}
-          />
-          {trend} <em>vs. mês anterior</em>
-        </small>
+        {trend ? (
+          <small className={trend.startsWith("+") ? "positive" : "negative"}>
+            <Icone
+              name={trend.startsWith("+") ? "arrow-up" : "arrow-down"}
+              size={14}
+            />
+            {trend} <em>vs. mês anterior</em>
+          </small>
+        ) : (
+          <small className="hint">{hint}</small>
+        )}
       </div>
     </Cartao>
   )

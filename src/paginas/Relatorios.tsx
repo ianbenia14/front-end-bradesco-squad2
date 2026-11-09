@@ -1,170 +1,202 @@
-import type { Transaction } from "../tipos"
-import { summary } from "../utilitarios/calculos"
+import { useState } from "react"
+import type { Budget, Transaction } from "../tipos"
+import {
+  categoryTotals,
+  establishmentTotals,
+  inMonth,
+  monthTotal,
+  monthsWithData,
+  scoreFor,
+  scoreLevel,
+  sumKind,
+} from "../utilitarios/calculos"
+import { REF_MONTH, monthKey, monthLabel, monthShort, prevMonthKey } from "../utilitarios/datas"
+import { type Filtros, aplicarFiltros, filtrosVazios } from "../utilitarios/filtros"
 import { money, moneySigned, pct, round2 } from "../utilitarios/formatacao"
 import { Cabecalho } from "../componentes/Cabecalho"
 import { Cartao } from "../componentes/Cartao"
 import { CartaoEstatistica } from "../componentes/CartaoEstatistica"
+import { FiltrosFinanceiros } from "../componentes/FiltrosFinanceiros"
+import { GraficoBarras } from "../componentes/GraficoBarras"
 import { GraficoRosca } from "../componentes/GraficoRosca"
 import { Icone } from "../componentes/Icone"
 import { Selecao } from "../componentes/Selecao"
 import { TituloSecao } from "../componentes/TituloSecao"
 
-export function Relatorios({ items }: { items: Transaction[] }) {
-  const totals = summary(items)
-  const deltas = [
-    {
-      label: "Receitas",
-      value: totals.income,
-      diff: round2(totals.income - totals.prevIncome),
-      up: true,
-    },
-    {
-      label: "Despesas",
-      value: totals.expense,
-      diff: round2(totals.expense - totals.prevExpense),
-      up: false,
-    },
-    {
-      label: "Economia",
-      value: totals.period,
-      diff: round2(totals.period - totals.prevPeriod),
-      up: true,
-    },
-  ].map((item) => ({
-    ...item,
-    good: item.up ? item.diff >= 0 : item.diff <= 0,
+export function Relatorios({ items, budgets }: { items: Transaction[]; budgets: Budget[] }) {
+  const [filtros, setFiltros] = useState<Filtros>(filtrosVazios)
+  const [mode, setMode] = useState<"month" | "year">("month")
+  const [month, setMonth] = useState(REF_MONTH)
+  const months = Array.from(new Set([...monthsWithData(items), REF_MONTH])).sort()
+
+  const filtered = aplicarFiltros(items, filtros)
+  const custom = Boolean(filtros.from || filtros.to)
+  const year = REF_MONTH.slice(0, 4)
+  const scoped = custom
+    ? filtered
+    : mode === "year"
+      ? filtered.filter((t) => monthKey(t.date).startsWith(year))
+      : inMonth(filtered, month)
+  const comparable = !custom && mode === "month"
+  const prevList = comparable ? inMonth(filtered, prevMonthKey(month)) : []
+
+  const income = sumKind(scoped, "income")
+  const expense = sumKind(scoped, "expense")
+  const prevIncome = sumKind(prevList, "income")
+  const prevExpense = sumKind(prevList, "expense")
+  const balance = round2(income - expense)
+  const prevBalance = round2(prevIncome - prevExpense)
+
+  const ranking = categoryTotals(scoped)
+  const totalExpense = ranking.reduce((s, [, v]) => s + v, 0)
+  const establishments = establishmentTotals(scoped).slice(0, 5)
+  const score = scoreFor(items, budgets, custom || mode === "year" ? REF_MONTH : month)
+  const hasData = items.length > 0
+
+  const chartMonths = Array.from(new Set(filtered.map((t) => monthKey(t.date)))).sort()
+  const trend = chartMonths.map((k, i) => ({
+    key: k,
+    expense: monthTotal(filtered, k, "expense"),
+    delta: i ? monthTotal(filtered, k, "expense") - monthTotal(filtered, chartMonths[i - 1], "expense") : null,
   }))
+
+  const deltas = [
+    { label: "Receitas", value: income, diff: round2(income - prevIncome), up: true },
+    { label: "Despesas", value: expense, diff: round2(expense - prevExpense), up: false },
+    { label: "Economia", value: balance, diff: round2(balance - prevBalance), up: true },
+  ].map((item) => ({ ...item, good: item.up ? item.diff >= 0 : item.diff <= 0 }))
+
+  const periodName = custom ? "período filtrado" : mode === "year" ? "ano" : "mês"
+
   return (
     <>
-      <Cabecalho
-        title="Relatórios"
-        subtitle="Entenda seus hábitos e acompanhe sua evolução financeira."
-      />
+      <Cabecalho title="Relatórios" subtitle="Entenda seus hábitos e acompanhe sua evolução financeira." />
       <div className="page-content">
         <div className="page-heading-actions report-filters">
           <div className="segmented">
-            <button className="active">Mensal</button>
-            <button>Anual</button>
+            <button className={mode === "month" ? "active" : ""} onClick={() => setMode("month")}>Mensal</button>
+            <button className={mode === "year" ? "active" : ""} onClick={() => setMode("year")}>Anual</button>
           </div>
-          <Selecao defaultValue="out">
-            <option value="out">Outubro de 2026</option>
-            <option value="set">Setembro de 2026</option>
-          </Selecao>
+          {mode === "month" && !custom && (
+            <Selecao value={month} onChange={(e) => setMonth(e.target.value)}>
+              {[...months].reverse().map((k) => (
+                <option key={k} value={k}>{monthLabel(k)}</option>
+              ))}
+            </Selecao>
+          )}
         </div>
+        <FiltrosFinanceiros filtros={filtros} setFiltros={setFiltros} />
+        {custom && <p className="plan-total">Datas informadas: o relatório usa o período filtrado no lugar do mês/ano.</p>}
         <div className="stats-grid report-stats">
           <CartaoEstatistica
-            label="Receitas totais"
-            value={money(totals.income)}
-            trend={pct(totals.income, totals.prevIncome)}
+            label={`Total recebido no ${periodName}`}
+            value={money(income)}
+            trend={comparable ? pct(income, prevIncome) : undefined}
+            hint="Receitas do período"
             icon="arrow-up"
           />
           <CartaoEstatistica
-            label="Despesas totais"
-            value={money(totals.expense)}
-            trend={pct(totals.expense, totals.prevExpense)}
+            label={`Total gasto no ${periodName}`}
+            value={money(expense)}
+            trend={comparable ? pct(expense, prevExpense) : undefined}
+            hint="Despesas do período"
             icon="arrow-down"
             tone="orange"
           />
           <CartaoEstatistica
-            label="Saldo do período"
-            value={moneySigned(totals.period)}
-            trend={pct(totals.period, totals.prevPeriod)}
+            label="Saldo final"
+            value={moneySigned(balance)}
+            trend={comparable ? pct(balance, prevBalance) : undefined}
+            hint="Receitas menos despesas"
             icon="wallet"
           />
         </div>
         <div className="reports-grid">
           <Cartao>
-            <TituloSecao
-              title="Receitas x despesas"
-              action={<span className="comparison">Comparativo mensal</span>}
+            <TituloSecao title="Evolução mensal" action={<span className="comparison">Receitas x despesas</span>} />
+            <GraficoBarras
+              labels={chartMonths.map(monthShort)}
+              series={[
+                { name: "Receitas", color: "#0f766e", values: chartMonths.map((k) => monthTotal(filtered, k, "income")) },
+                { name: "Despesas", color: "#d49a64", values: chartMonths.map((k) => monthTotal(filtered, k, "expense")) },
+              ]}
             />
-            <div className="line-chart">
-              <div className="axis-labels">
-                <span>R$ 12 mil</span>
-                <span>R$ 8 mil</span>
-                <span>R$ 4 mil</span>
-                <span>R$ 0</span>
-              </div>
-              <svg viewBox="0 0 620 210" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="reportArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop stopColor="#0f766e" stopOpacity=".16" />
-                    <stop offset="1" stopColor="#0f766e" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path
-                  className="grid-line"
-                  d="M0 15H620M0 75H620M0 135H620M0 195H620"
-                />
-                <path
-                  className="report-area"
-                  d="M0 120 C80 113 102 96 155 101 S244 66 310 82 S411 54 465 61 S550 29 620 37 V195H0Z"
-                />
-                <path
-                  className="income-line"
-                  d="M0 120 C80 113 102 96 155 101 S244 66 310 82 S411 54 465 61 S550 29 620 37"
-                />
-                <path
-                  className="expense-line"
-                  d="M0 148 C67 138 100 145 155 132 S252 125 310 139 S402 111 465 118 S552 102 620 109"
-                />
-              </svg>
-              <div className="chart-months">
-                <span>Mai</span>
-                <span>Jun</span>
-                <span>Jul</span>
-                <span>Ago</span>
-                <span>Set</span>
-                <span>Out</span>
-              </div>
-            </div>
-            <div className="chart-legend centered">
-              <span>
-                <i className="dot green-dot" />
-                Receitas
-              </span>
-              <span>
-                <i className="dot orange-dot" />
-                Despesas
-              </span>
-            </div>
           </Cartao>
           <Cartao>
             <TituloSecao title="Gastos por categoria" />
-            <GraficoRosca />
+            <GraficoRosca data={ranking} />
           </Cartao>
-          <Cartao className="comparison-card">
-            <TituloSecao title="Comparação com setembro" />
-            <div className="comparison-grid">
-              {deltas.map((item) => (
-                <div key={item.label}>
-                  <span>{item.label}</span>
-                  <strong>{moneySigned(item.value)}</strong>
-                  <small className={item.good ? "positive" : "negative"}>
-                    <Icone
-                      name={item.diff >= 0 ? "arrow-up" : "arrow-down"}
-                      size={14}
-                    />{" "}
-                    {money(item.diff)}
-                  </small>
+          <Cartao className="rank-card">
+            <TituloSecao title="Ranking de categorias" />
+            <table className="rank-table">
+              <thead>
+                <tr><th>#</th><th>Categoria</th><th>Valor</th><th>%</th></tr>
+              </thead>
+              <tbody>
+                {ranking.map(([name, value], i) => (
+                  <tr key={name}>
+                    <td>{i + 1}</td>
+                    <td>{name}</td>
+                    <td>{money(value)}</td>
+                    <td>{totalExpense ? Math.round((value / totalExpense) * 100) : 0}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!ranking.length && <div className="empty-state">Sem despesas no período.</div>}
+          </Cartao>
+          <Cartao>
+            <TituloSecao title="Gastos por estabelecimento" />
+            <div className="rank-list">
+              {establishments.map(([name, value]) => (
+                <div key={name}><span>{name}</span><strong>{money(value)}</strong></div>
+              ))}
+              {!establishments.length && <div className="empty-state">Sem despesas no período.</div>}
+            </div>
+          </Cartao>
+          {comparable && (
+            <Cartao className="comparison-card">
+              <TituloSecao title={`Comparação com ${monthLabel(prevMonthKey(month)).split(" de ")[0].toLowerCase()}`} />
+              <div className="comparison-grid">
+                {deltas.map((item) => (
+                  <div key={item.label}>
+                    <span>{item.label}</span>
+                    <strong>{moneySigned(item.value)}</strong>
+                    <small className={item.good ? "positive" : "negative"}>
+                      <Icone name={item.diff >= 0 ? "arrow-up" : "arrow-down"} size={14} /> {money(item.diff)}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            </Cartao>
+          )}
+          <Cartao>
+            <TituloSecao title="Comparativo mês a mês (despesas)" />
+            <div className="rank-list">
+              {trend.map((t) => (
+                <div key={t.key}>
+                  <span>{monthLabel(t.key)}</span>
+                  <strong>
+                    {money(t.expense)}
+                    {t.delta !== null && (
+                      <small className={t.delta <= 0 ? "positive" : "negative"}>
+                        {" "}{t.delta >= 0 ? "+" : "-"}{money(t.delta)}
+                      </small>
+                    )}
+                  </strong>
                 </div>
               ))}
+              {!trend.length && <div className="empty-state">Sem dados no período.</div>}
             </div>
           </Cartao>
           <Cartao className="report-score">
             <div className="score-copy">
               <span className="month-label">SCORE FINANCEIRO</span>
-              <h3>Suas finanças estão saudáveis</h3>
-              <p>
-                Você evoluiu em organização e economia neste mês. Mantenha a
-                consistência para chegar ainda mais longe.
-              </p>
-              <span className="score-status">
-                <Icone name="arrow-up" size={15} /> 6 pontos desde setembro
-              </span>
+              <h3>{hasData ? `Nível: ${scoreLevel(score)}` : "Sem dados"}</h3>
+              <p>Calculado a partir da economia, controle de gastos, estouros de orçamento e constância de investimentos.</p>
             </div>
             <div className="mini-score">
-              <strong>82</strong>
+              <strong>{hasData ? score : "—"}</strong>
               <span>/ 100</span>
             </div>
           </Cartao>

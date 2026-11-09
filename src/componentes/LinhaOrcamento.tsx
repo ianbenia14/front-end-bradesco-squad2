@@ -1,15 +1,19 @@
 import type { Budget } from "../tipos"
+import { budgetStatus, statusTone } from "../utilitarios/calculos"
 import { money } from "../utilitarios/formatacao"
 import { Icone } from "./Icone"
+import { SeloStatus } from "./SeloStatus"
 
 export function LinhaOrcamento({
   item,
   compact = false,
 }: {
-  item: Budget
+  item: Budget & { spent: number }
   compact?: boolean
 }) {
-  const percent = Math.round((item.spent / item.limit) * 100)
+  const percent = item.limit ? (item.spent / item.limit) * 100 : 0
+  const status = budgetStatus(percent)
+  const tone = statusTone[status]
   return (
     <div className={`budget-row ${compact ? "compact" : ""}`}>
       <div className="budget-info">
@@ -20,18 +24,16 @@ export function LinhaOrcamento({
           <strong>{item.category}</strong>
           {!compact && <span>Orçamento mensal</span>}
         </div>
+        <SeloStatus status={status} />
       </div>
       <div className="budget-numbers">
         <span>
           <strong>{money(item.spent)}</strong> de {money(item.limit)}
         </span>
-        <b className={percent > 90 ? "warning-text" : ""}>{percent}%</b>
+        <b className={tone === "green" ? "" : `${tone}-text`}>{Math.round(percent)}%</b>
       </div>
       <div className="progress">
-        <i
-          className={`${item.color} ${percent > 90 ? "warning" : ""}`}
-          style={{ width: `${Math.min(100, percent)}%` }}
-        />
+        <i className={tone} style={{ width: `${Math.min(100, percent)}%` }} />
       </div>
     </div>
   )

@@ -25,7 +25,10 @@ export function ListaTransacoes({
             </span>
             <div className="transaction-name">
               <strong>{item.title}</strong>
-              <span>{item.type === "income" ? "Entrada" : "Saída"}</span>
+              <span>
+                {item.establishment ?? (item.type === "income" ? "Entrada" : "Saída")}
+                {item.recurring ? " · Recorrente" : ""}
+              </span>
             </div>
           </div>
           <span className="category-label">{item.category}</span>

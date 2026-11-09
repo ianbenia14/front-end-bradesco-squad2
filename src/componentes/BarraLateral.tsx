@@ -1,20 +1,25 @@
 import type { IconName, Screen } from "../tipos"
 import { Icone } from "./Icone"
+import { iniciais, useUsuario } from "../contexto/usuario"
 import { Marca } from "./Marca"
 
 export function BarraLateral({
   screen,
   setScreen,
+  onLogout,
 }: {
   screen: Screen
   setScreen: (screen: Screen) => void
+  onLogout: () => void
 }) {
+  const user = useUsuario()
   const links: { id: Screen; label: string; icon: IconName }[] = [
     { id: "dashboard", label: "Painel", icon: "dashboard" },
     { id: "transactions", label: "Transações", icon: "transaction" },
     { id: "budgets", label: "Orçamentos", icon: "wallet" },
     { id: "goals", label: "Metas", icon: "goal" },
     { id: "reports", label: "Relatórios", icon: "report" },
+    { id: "planning", label: "Planejamento", icon: "chart" },
   ]
   return (
     <aside className="sidebar">
@@ -33,19 +38,22 @@ export function BarraLateral({
         ))}
       </nav>
       <div className="sidebar-bottom">
-        <button className="nav-link">
+        <button
+          className={`nav-link ${screen === "settings" ? "active" : ""}`}
+          onClick={() => setScreen("settings")}
+        >
           <Icone name="settings" size={19} />
           <span>Configurações</span>
         </button>
-        <button className="nav-link" onClick={() => setScreen("login")}>
+        <button className="nav-link" onClick={onLogout}>
           <Icone name="logout" size={19} />
-          <span>Sair</span>
+          <span>{user.guest ? "Sair do teste" : "Sair"}</span>
         </button>
         <div className="profile">
-          <span className="avatar">AM</span>
+          <span className="avatar">{iniciais(user.name)}</span>
           <span>
-            <strong>Ana Martins</strong>
-            <small>ana@email.com</small>
+            <strong>{user.name}</strong>
+            <small>{user.guest ? "Modo convidado" : user.email}</small>
           </span>
         </div>
       </div>

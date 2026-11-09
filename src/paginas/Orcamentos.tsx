@@ -1,8 +1,10 @@
 import { useState } from "react"
-import type { Budget, Transaction } from "../tipos"
-import { budgetCategories, budgetColors, budgetIcons } from "../dados/orcamentos"
-import { octTotal } from "../utilitarios/calculos"
-import { money, parseMoneyValue, round2, toInputValue } from "../utilitarios/formatacao"
+import type { Budget, Goal, Transaction } from "../tipos"
+import { REF_MONTH, monthLong } from "../utilitarios/datas"
+import { budgetCategories, budgetColorOf, budgetIcons } from "../dados/orcamentos"
+import { budgetStatus, budgetUsage, buildInsights, statusTone } from "../utilitarios/calculos"
+import { money, parseMoneyValue, toInputValue } from "../utilitarios/formatacao"
+import { Alertas } from "../componentes/Alertas"
 import { Aviso } from "../componentes/Aviso"
 import { Botao } from "../componentes/Botao"
 import { Cabecalho } from "../componentes/Cabecalho"
@@ -17,10 +19,12 @@ export function Orcamentos({
   items,
   setItems,
   transactionItems,
+  goals,
 }: {
   items: Budget[]
   setItems: React.Dispatch<React.SetStateAction<Budget[]>>
   transactionItems: Transaction[]
+  goals: Goal[]
 }) {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Budget | null>(null)
@@ -35,11 +39,7 @@ export function Orcamentos({
   }
   const withSpent = items.map((budget) => ({
     ...budget,
-    spent: round2(
-      budget.spent +
-        octTotal(transactionItems, "expense", budget.category) -
-        budget.baseline,
-    ),
+    spent: budgetUsage(budget, transactionItems).spent,
   }))
   const available = budgetCategories.filter(
     (name) => !items.some((budget) => budget.category === name),
@@ -48,7 +48,8 @@ export function Orcamentos({
   const totalLimit = withSpent.reduce((total, b) => total + b.limit, 0)
   const overall = totalLimit ? Math.round((totalSpent / totalLimit) * 100) : 0
   const remaining = totalLimit - totalSpent
-  const food = items.find((budget) => budget.category === "Alimentação")
+  const insights = buildInsights(transactionItems, items, goals)
+  const overallStatus = budgetStatus(overall)
   return (
     <>
       <Cabecalho
@@ -58,7 +59,7 @@ export function Orcamentos({
       <div className="page-content">
         <div className="page-heading-actions">
           <div>
-            <span className="month-label">ORÇAMENTO DE OUTUBRO</span>
+            <span className="month-label">ORÇAMENTO DE {monthLong[REF_MONTH.split("-")[1]].toUpperCase()}</span>
             <h2 className="content-title">
               {money(totalSpent)} <small>gastos de {money(totalLimit)}</small>
             </h2>
@@ -73,11 +74,11 @@ export function Orcamentos({
         <Cartao className="overall-budget">
           <div>
             <strong>{overall}%</strong>
-            <span>do orçamento utilizado</span>
+            <span>do orçamento utilizado · {overallStatus}</span>
           </div>
           <div className="progress large">
             <i
-              className={overall > 90 ? "orange warning" : "green"}
+              className={statusTone[overallStatus]}
               style={{ width: `${Math.min(100, overall)}%` }}
             />
           </div>
@@ -95,6 +96,12 @@ export function Orcamentos({
             )}
           </p>
         </Cartao>
+        <div className="band-legend">
+          <span><i className="dot green-dot" />Até 70% Normal</span>
+          <span><i className="dot orange-dot" />71% a 89% Atenção</span>
+          <span><i className="dot red-dot" />Acima de 90% Risco</span>
+          <span><i className="dot red-dot" />Acima de 100% Estourado</span>
+        </div>
         {withSpent.length ? (
           <div className="budget-grid">
             {withSpent.map((item) => (
@@ -163,20 +170,10 @@ export function Orcamentos({
           <span className="tip-icon">
             <Icone name="chart" />
           </span>
-          <div>
-            <strong>Dica para o seu orçamento</strong>
-            <p>
-              Seus gastos com alimentação subiram 14% em relação ao mês passado.
-              Que tal revisar esse limite?
-            </p>
+          <div style={{ flex: 1 }}>
+            <strong>Insights e alertas</strong>
+            <Alertas insights={insights} />
           </div>
-          <Botao
-            variant="secondary"
-            disabled={!food}
-            onClick={() => food && setEditing(food)}
-          >
-            Revisar orçamento
-          </Botao>
         </Cartao>
       </div>
       {(formOpen || editing) && (
@@ -214,10 +211,8 @@ export function Orcamentos({
                       id: Date.now(),
                       category,
                       icon: budgetIcons[category] ?? "wallet",
-                      spent: 0,
-                      baseline: 0,
                       limit,
-                      color: budgetColors[items.length % budgetColors.length],
+                      color: budgetColorOf(category),
                     }
                     setItems((current) => [...current, budget])
                     setToast({

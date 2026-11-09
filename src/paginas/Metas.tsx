@@ -1,7 +1,9 @@
 import { useState } from "react"
-import type { Goal } from "../tipos"
+import type { Goal, Transaction } from "../tipos"
 import { monthNames, toMonthInput } from "../utilitarios/datas"
 import { money, toInputValue } from "../utilitarios/formatacao"
+import { averageMonthlySaving } from "../utilitarios/calculos"
+import { goalInfo } from "../utilitarios/metas"
 import { Aviso } from "../componentes/Aviso"
 import { Botao } from "../componentes/Botao"
 import { Cabecalho } from "../componentes/Cabecalho"
@@ -13,7 +15,9 @@ import { TituloSecao } from "../componentes/TituloSecao"
 export function Metas({
   items,
   setItems,
+  transactionItems,
 }: {
+  transactionItems: Transaction[]
   items: Goal[]
   setItems: React.Dispatch<React.SetStateAction<Goal[]>>
 }) {
@@ -28,11 +32,12 @@ export function Metas({
     setFormOpen(false)
     setEditing(null)
   }
-  const registerProgress = (goal: Goal) => {
+  const [progressing, setProgressing] = useState<Goal | null>(null)
+  const registerProgress = (goal: Goal, value: number) => {
     setItems((current) =>
       current.map((item) =>
         item.id === goal.id
-          ? { ...item, saved: Math.min(item.saved + 500, item.target) }
+          ? { ...item, saved: Math.min(item.saved + value, item.target) }
           : item,
       ),
     )
@@ -48,6 +53,7 @@ export function Metas({
         .replace(",", ".")
         .replace(/[^\d.]/g, ""),
     )
+  const pace = Math.max(0, averageMonthlySaving(transactionItems)) / Math.max(1, items.length)
   const totalSaved = items.reduce((total, goal) => total + goal.saved, 0)
   const totalTarget = items.reduce((total, goal) => total + goal.target, 0)
   const overall = totalTarget
@@ -75,7 +81,8 @@ export function Metas({
         {items.length ? (
           <div className="goals-grid">
             {items.map((goal) => {
-              const percent = Math.round((goal.saved / goal.target) * 100)
+              const info = goalInfo(goal, pace)
+              const percent = info.percent
               return (
                 <Cartao className="goal-card" key={goal.id}>
                   <div className="goal-top">
@@ -127,7 +134,7 @@ export function Metas({
                   <div className="progress">
                     <i
                       className={goal.color}
-                      style={{ width: `${percent}%` }}
+                      style={{ width: `${Math.min(100, percent)}%` }}
                     />
                   </div>
                   <div className="goal-meta">
@@ -137,16 +144,32 @@ export function Metas({
                     </span>
                     <span>
                       <small>VALOR RESTANTE</small>
-                      <strong>{money(goal.target - goal.saved)}</strong>
+                      <strong>{money(info.remaining)}</strong>
                     </span>
                     <span>
                       <small>PRAZO</small>
                       <strong>{goal.deadline}</strong>
                     </span>
                   </div>
+                  <div className="goal-meta goal-calc">
+                    <span>
+                      <small>NECESSÁRIO POR MÊS</small>
+                      <strong>{money(info.perMonth)}</strong>
+                    </span>
+                    <span>
+                      <small>TEMPO ESTIMADO</small>
+                      <strong>
+                        {info.estimatedMonths === null
+                          ? "—"
+                          : info.estimatedMonths === 0
+                            ? "Concluída"
+                            : `${info.estimatedMonths} ${info.estimatedMonths === 1 ? "mês" : "meses"} (${info.estimatedDate})`}
+                      </strong>
+                    </span>
+                  </div>
                   <Botao
                     variant="secondary"
-                    onClick={() => registerProgress(goal)}
+                    onClick={() => setProgressing(goal)}
                   >
                     <Icone name="plus" size={17} /> Registrar progresso
                   </Botao>
@@ -312,6 +335,30 @@ export function Metas({
                   Excluir
                 </Botao>
               </div>
+            </div>
+          </Cartao>
+        </div>
+      )}
+      {progressing && (
+        <div className="modal-backdrop" onMouseDown={() => setProgressing(null)}>
+          <Cartao className="modal">
+            <div onMouseDown={(e) => e.stopPropagation()}>
+              <TituloSecao title={`Registrar progresso: ${progressing.name}`} />
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  const value = Math.abs(parseMoney(new FormData(e.currentTarget).get("value")))
+                  if (!value) return
+                  registerProgress(progressing, value)
+                  setProgressing(null)
+                }}
+              >
+                <Campo label="Valor guardado agora" name="value" inputMode="decimal" placeholder="R$ 0,00" required />
+                <div className="modal-actions">
+                  <Botao type="button" variant="secondary" onClick={() => setProgressing(null)}>Cancelar</Botao>
+                  <Botao type="submit">Registrar</Botao>
+                </div>
+              </form>
             </div>
           </Cartao>
         </div>

@@ -1,4 +1,6 @@
-export type Screen = "login" | "dashboard" | "transactions" | "budgets" | "goals" | "reports"
+export type Screen = "dashboard" | "transactions" | "budgets" | "goals" | "reports" | "planning" | "settings" | "faq" | "privacy" | "terms"
+
+export type PublicScreen = "welcome" | "login" | "register" | "faq" | "privacy" | "terms" | "tools"
 
 export type IconName = "arrow-down" | "arrow-up" | "bell" | "calendar" | "chart" | "check" | "chevron" | "dashboard" | "eye" | "flag" | "food" | "goal" | "home" | "logout" | "menu" | "plus" | "report" | "search" | "settings" | "shopping" | "transaction" | "transport" | "wallet" | "x"
 
@@ -10,14 +12,15 @@ export type Transaction = {
   amount: number
   type: "income" | "expense"
   icon: IconName
+  establishment?: string
+  recurring?: boolean
+  userId?: string
 }
 
 export type Budget = {
   id: number
   category: string
   icon: IconName
-  spent: number
-  baseline: number
   limit: number
   color: string
 }
@@ -31,3 +34,11 @@ export type Goal = {
   deadline: string
   color: string
 }
+
+export type IncomeProfile = {
+  salary: number
+  recurring: number
+  variable: number
+}
+
+export type BudgetStatus = "Normal" | "Atenção" | "Risco" | "Estourado"
