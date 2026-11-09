@@ -1,26 +1,14 @@
 # Saldo+ — Front-end (React + TypeScript + Vite)
 
-Sistema de Gestão Financeira Pessoal (Squad 2 — TakeOff). Protótipo de interface em React com telas de login, painel, transações, orçamentos, metas e relatórios, usando dados de exemplo.
+Sistema de Gestão Financeira Pessoal (Squad 2 — Bradesco). Interface em React com telas de boas-vindas, login, cadastro, painel, transações, orçamentos, metas, relatórios e planejamento. Este front ainda não está integrado ao back-end (Java/Spring).
 
-Esta versão foi refeita a partir do projeto em grupo do Squad 2, com o novo layout criado no Figma.
+## Como rodar
 
-## Como rodar no VS Code
-
-1. Pré-requisito: Node.js 20.19 ou superior (LTS) instalado — https://nodejs.org
-2. Abrir o projeto: `File > Open Folder` e escolha a pasta que contém o `package.json`.
-3. Instalar dependências: abra o terminal (`Terminal > New Terminal`) e rode `npm install`.
-4. Rodar: `npm run dev`. O app sobe em http://localhost:5173. Se a porta estiver ocupada, o Vite usa a próxima (5174, por exemplo) e mostra o endereço no terminal.
-5. Gerar versão final: `npm run build` (confere o TypeScript e gera a pasta `dist`).
-6. Verificar o código: `npm run lint`.
-
-Para clonar do GitHub:
-
-```bash
-git clone https://github.com/Gabrielxrl8/saldo-mais-front.git
-cd saldo-mais-front
-npm install
-npm run dev
-```
+1. Instale o Node.js 20.19 ou superior (LTS): https://nodejs.org
+2. Abra a pasta que contém o `package.json` no VS Code.
+3. No terminal: `npm install`
+4. Rodar: `npm run dev` e abrir o endereço mostrado (normalmente http://localhost:5173)
+5. Build de produção: `npm run build`
 
 ## Tecnologias
 
@@ -30,51 +18,48 @@ React 19, TypeScript, Vite, CSS (`index.css`) e ESLint.
 
 ```
 src/
-  componentes/   Icone, Botao, Campo, Selecao, Cartao, CartaoEstatistica,
-                 TituloSecao, Marca, BarraLateral (menu lateral), Cabecalho,
-                 ListaTransacoes, LinhaOrcamento, GraficoRosca, Aviso
-  dados/         transacoes, orcamentos e metas de exemplo (dados fictícios)
-  paginas/
-    Login        entrar / criar conta
-    Painel       dashboard
-    Transacoes   lista, busca, filtros, criar, editar e excluir
-    Orcamentos   limites por categoria, criar, editar e excluir
-    Metas        metas com progresso, criar, editar e excluir
-    Relatorios   gráficos e comparativos do mês
-  tipos/         tipos TypeScript (Screen, Transaction, Budget, Goal, IconName)
-  utilitarios/   funções auxiliares (formatacao, calculos, datas)
-  App.tsx        controla qual tela aparece e guarda transações, orçamentos e metas
-  main.tsx       ponto de entrada
-  index.css      estilos globais
-public/          favicon e ícones
+  componentes/   peças reutilizáveis (menu, cartões, gráficos, filtros, formulário de transação)
+  contexto/      usuário logado (nome, e-mail, modo convidado)
+  dados/         categorias, orçamentos, metas e transações de exemplo
+  paginas/       telas do sistema
+  servicos/      autenticação e armazenamento (localStorage)
+  tipos/         tipos TypeScript
+  utilitarios/   cálculos, datas, filtros, formatação e metas
+  App.tsx        controla sessão, tela atual e dados do usuário
 ```
 
 ## Telas
 
 | Tela | O que faz |
 |---|---|
-| Login | entrar ou criar conta, mostrar/ocultar senha, "Lembrar de mim" e "Esqueci minha senha" (só no login) |
-| Painel | visão geral das finanças: saldo, receitas, despesas, últimas transações e score |
-| Transações | lista as transações do usuário, com busca e filtros; permite criar, editar e excluir |
-| Orçamentos | limite mensal por categoria, com barra de progresso; permite criar, editar e excluir |
-| Metas | metas com progresso e prazo; permite registrar progresso, criar, editar e excluir |
-| Relatórios | receitas x despesas, gastos por categoria, comparação com o mês anterior e score financeiro |
+| Boas-vindas | apresentação, carrossel, criar conta, entrar e modo convidado |
+| Ferramentas | calculadoras de juros compostos, meta e independência financeira (sem cadastro) |
+| Cadastro / Login | só entra quem tem conta cadastrada |
+| Painel | receita, despesa, saldo, economia acumulada, % da renda comprometida, gráficos, alertas, score e filtros |
+| Transações | cadastrar, editar e excluir; estabelecimento, recorrência, 12 categorias com sugestão automática; filtros |
+| Orçamentos | limite por categoria com consumo e faixas Normal / Atenção / Risco / Estourado |
+| Metas | valor necessário por mês, tempo estimado e percentual atingido; registrar progresso |
+| Relatórios | mensal e anual, ranking de categorias, evolução, comparativo mês a mês e score |
+| Planejamento | salário, regra 50/30/20, reserva de emergência, investimento mínimo e evolução do patrimônio |
+| Configurações / Ajuda | dados da conta, apagar dados, excluir conta, FAQ, Privacidade e Termos |
 
-## Como funciona a navegação
+## Regras implementadas no front
 
-Não há rotas nem URLs por tela. O `App.tsx` guarda a tela atual em um estado (`login`, `dashboard`, `transactions`, `budgets`, `goals` ou `reports`) e mostra o menu lateral junto com a tela escolhida, exceto no login.
-
-As listas de transações, orçamentos e metas ficam no `App.tsx` e descem para as páginas por props. O Painel e os Relatórios calculam receitas, despesas e saldo a partir das transações de outubro.
+- Faixas de orçamento: até 70% Normal, 71–89% Atenção, acima de 90% Risco, acima de 100% Estourado.
+- Score de saúde financeira de 0 a 100 (Crítico, Atenção, Bom, Excelente), recalculado a cada nova transação.
+- Valor da transação maior que zero; insights só com dados suficientes.
 
 ## Integração com o back-end
 
-Ainda não está integrado. A API do Finanças Lite (Java + Spring Boot, em `http://localhost:8080`) está em outro projeto e será consumida por este front em uma próxima etapa.
+Ainda não existe. A API (Java + Spring Boot) está em outro projeto. A autenticação e o armazenamento ficam isolados em `src/servicos/autenticacao.ts`, que deve ser trocado por chamadas à API.
 
 ## O que ainda NÃO existe
 
-- Backend / API conectada — as transações, orçamentos e metas vêm de `dados/`.
-- Autenticação real — o login só troca de tela, sem validar usuário e senha.
-- Persistência — os dados voltam ao padrão ao recarregar a página.
-- Versão para celular e tablet — o layout foi pensado para telas a partir de 1100 px.
-- Botões sem ação: Configurações, sino de notificações, "Esqueci minha senha", "Lembrar de mim", paginação, Mensal/Anual e seletor de mês.
-- Valores fixos: saldo, +12,8%, score 82, gráficos e comparações com o mês anterior. "Este mês" é sempre outubro de 2026.
+- Back-end / API conectada: os dados ficam no `localStorage` do navegador.
+- Autenticação real: a conta e a senha ficam só no navegador (senha com hash e salt).
+- Login com Google, Apple e biometria, e redefinição de senha por e-mail (dependem do back).
+- Importação automática de transações via integração bancária.
+- Histórico dos relatórios mensais no servidor.
+- Saldo anterior ao histórico é um valor fixo de demonstração (R$ 12.480,50).
+- Layout responsivo ainda não testado em aparelhos reais.
+- A fórmula do score e o tempo estimado das metas são interpretação do grupo, pois a descrição não define.
