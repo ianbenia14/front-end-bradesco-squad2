@@ -20,6 +20,7 @@ export function BarraLateral({
     { id: "goals", label: "Metas", icon: "goal" },
     { id: "reports", label: "Relatórios", icon: "report" },
     { id: "planning", label: "Planejamento", icon: "chart" },
+    { id: "education", label: "Educação", icon: "report" },
   ]
   return (
     <aside className="sidebar">

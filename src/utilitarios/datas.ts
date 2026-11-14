@@ -41,10 +41,13 @@ const currentDate = `${currentMonth}-${pad(today.getDate())}`
 // o modo convidado usa o mês dos dados de demonstração.
 export let REF_MONTH = currentMonth
 export let DEFAULT_DATE = currentDate
+// Saldo anterior ao histórico: apenas na demonstração (modo convidado)
+export let OPENING_BALANCE = 0
 
 export const setReference = (guest: boolean) => {
   REF_MONTH = guest ? "2026-10" : currentMonth
   DEFAULT_DATE = guest ? "2026-10-06" : currentDate
+  OPENING_BALANCE = guest ? 12480.5 : 0
 }
 
 export const toInputDate = (date: string) => {
@@ -88,3 +91,10 @@ export const keyToDeadline = (key: string) => {
   const [y, m] = key.split("-")
   return `${monthNames[m]} ${y}`
 }
+
+export const fromInputDate = (iso: string) => {
+  const [year, month, day] = iso.split("-")
+  return `${day} ${monthNames[month] ?? "Jan"} ${year}`
+}
+
+export const todayIso = () => DEFAULT_DATE

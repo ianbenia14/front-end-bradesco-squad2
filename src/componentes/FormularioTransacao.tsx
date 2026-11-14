@@ -1,5 +1,5 @@
 import { useState } from "react"
-import type { Transaction } from "../tipos"
+import type { Recurrence, Transaction } from "../tipos"
 import {
   categoryIcons,
   expenseCategories,
@@ -26,6 +26,7 @@ export function FormularioTransacao({
   const [establishment, setEstablishment] = useState(editing?.establishment ?? "")
   const [touched, setTouched] = useState(Boolean(editing?.category))
   const [suggested, setSuggested] = useState<string | null>(null)
+  const [recurring, setRecurring] = useState(editing?.recurring ?? false)
   const [error, setError] = useState("")
 
   const onEstablishment = (value: string) => {
@@ -58,7 +59,9 @@ export function FormularioTransacao({
           type,
           icon: categoryIcons[finalCategory] ?? "wallet",
           establishment: establishment.trim() || undefined,
-          recurring: form.get("recurring") === "on",
+          recurring: recurring,
+          recurrence: recurring ? ((form.get("recurrence") as Recurrence) || "monthly") : undefined,
+          recurringOf: editing?.recurringOf,
         })
       }}
     >
@@ -131,9 +134,16 @@ export function FormularioTransacao({
         <small className="form-hint">Categoria sugerida pelo estabelecimento: {suggested}</small>
       )}
       <label className="check-label">
-        <input type="checkbox" name="recurring" defaultChecked={editing?.recurring} />
+        <input type="checkbox" name="recurring" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
         Transação recorrente
       </label>
+      {recurring && (
+        <Selecao label="Periodicidade" name="recurrence" defaultValue={editing?.recurrence ?? "monthly"}>
+          <option value="weekly">Semanal</option>
+          <option value="monthly">Mensal</option>
+          <option value="yearly">Anual</option>
+        </Selecao>
+      )}
       {error && <small className="form-error">{error}</small>}
       <div className="modal-actions">
         <Botao type="button" variant="secondary" onClick={onCancel}>

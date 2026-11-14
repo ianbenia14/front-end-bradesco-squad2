@@ -1,9 +1,7 @@
 import type { Budget, BudgetStatus, Goal, Transaction } from "../tipos"
-import { REF_MONTH, monthKey, monthLabel, prevMonthKey } from "./datas"
+import { OPENING_BALANCE, REF_MONTH, monthKey, prevMonthKey, toInputDate } from "./datas"
 import { money, round2 } from "./formatacao"
 
-// Saldo anterior ao histórico de transações (dado de demonstração)
-export const SALDO_INICIAL = 12480.5
 
 export const inMonth = (list: Transaction[], key: string) =>
   list.filter((t) => monthKey(t.date) === key)
@@ -29,7 +27,7 @@ export const expenseByCategory = (list: Transaction[], key: string | "year") => 
     .filter(
       (t) =>
         t.type === "expense" &&
-        (key === "year" ? monthKey(t.date).startsWith("2026") : monthKey(t.date) === key),
+        (key === "year" ? monthKey(t.date).startsWith(REF_MONTH.slice(0, 4)) : monthKey(t.date) === key),
     )
     .forEach((t) => {
       result[t.category] = round2((result[t.category] ?? 0) + Math.abs(t.amount))
@@ -93,7 +91,7 @@ export const summary = (list: Transaction[], key = REF_MONTH) => {
     prevIncome,
     prevExpense,
     prevPeriod: round2(prevIncome - prevExpense),
-    balance: round2(SALDO_INICIAL + allIncome - allExpense),
+    balance: round2(OPENING_BALANCE + allIncome - allExpense),
     accumulated: round2(allIncome - allExpense),
     commitment: income ? (expense / income) * 100 : 0,
   }
@@ -146,7 +144,18 @@ export const scoreFor = (list: Transaction[], budgets: Budget[], key = REF_MONTH
 
 export type Insight = { id: string; tone: "danger" | "warn" | "info"; text: string }
 
-// Insights e alertas (RF 3.5) — RN006: só com dados suficientes
+export const findReserve = (goals: Goal[]) =>
+  goals.find((g) => g.kind === "reserve") ??
+  goals.find((g) => g.kind === undefined && g.name.toLowerCase().includes("reserva"))
+
+export const sortByDateDesc = (list: Transaction[]) =>
+  [...list].sort((a, b) => {
+    const d = toInputDate(b.date).localeCompare(toInputDate(a.date))
+    return d !== 0 ? d : b.id - a.id
+  })
+
+// Insights e alertas (RF 3.5). Alertas de orçamento não dependem de histórico;
+// as comparações com o mês anterior exigem dados suficientes (RN006).
 export const buildInsights = (
   list: Transaction[],
   budgets: Budget[],
@@ -154,7 +163,8 @@ export const buildInsights = (
   key = REF_MONTH,
 ): Insight[] | null => {
   const prev = prevMonthKey(key)
-  if (inMonth(list, key).length < 3 || inMonth(list, prev).length < 3) return null
+  const current = inMonth(list, key)
+  if (current.length < 1) return null
   const result: Insight[] = []
   budgets.forEach((b) => {
     const u = budgetUsage(b, list, key)
@@ -170,42 +180,59 @@ export const buildInsights = (
         tone: "warn",
         text: `Você já utilizou ${Math.round(u.percent)}% do orçamento de ${b.category.toLowerCase()} neste mês.`,
       })
+    else if (u.status === "Atenção")
+      result.push({
+        id: `watch-${b.id}`,
+        tone: "info",
+        text: `Atenção: ${Math.round(u.percent)}% do orçamento de ${b.category.toLowerCase()} já foi utilizado.`,
+      })
   })
-  expenseByCategory(list, key).forEach(([category, value]) => {
-    const before = monthTotal(list, prev, "expense", category)
-    if (before > 0 && category !== "Investimentos") {
-      const growth = ((value - before) / before) * 100
-      if (growth >= 30)
+  const enoughHistory = current.length >= 3 && inMonth(list, prev).length >= 3
+  if (enoughHistory) {
+    expenseByCategory(list, key).forEach(([category, value]) => {
+      const before = monthTotal(list, prev, "expense", category)
+      if (before > 0 && category !== "Investimentos") {
+        const growth = ((value - before) / before) * 100
+        if (growth >= 30)
+          result.push({
+            id: `grow-${category}`,
+            tone: "warn",
+            text: `Seus gastos com ${category.toLowerCase()} aumentaram ${Math.round(growth)}% em relação ao mês anterior.`,
+          })
+      }
+    })
+    const income = monthTotal(list, key, "income")
+    const prevIncome = monthTotal(list, prev, "income")
+    if (prevIncome > 0 && income < prevIncome * 0.9)
+      result.push({
+        id: "income-drop",
+        tone: "danger",
+        text: `Sua receita mensal apresentou redução de ${Math.round(((prevIncome - income) / prevIncome) * 100)}% em comparação ao período anterior.`,
+      })
+    const reserve = findReserve(goals)
+    const daily = averageMonthlyExpense(list) / 30
+    if (reserve && daily > 0) {
+      const days = Math.floor(reserve.saved / daily)
+      if (days < 180)
         result.push({
-          id: `grow-${category}`,
+          id: "reserve",
           tone: "warn",
-          text: `Seus gastos com ${category.toLowerCase()} aumentaram ${Math.round(growth)}% em relação ao mês anterior.`,
+          text: `Sua reserva financeira atual cobre apenas ${days} dias de despesas médias.`,
         })
     }
-  })
-  const income = monthTotal(list, key, "income")
-  const prevIncome = monthTotal(list, prev, "income")
-  if (prevIncome > 0 && income < prevIncome * 0.9)
+  }
+  // Gastos recorrentes possivelmente desnecessários (objetivo secundário)
+  const subs = current.filter((t) => t.type === "expense" && t.recurring && t.category === "Assinaturas")
+  if (subs.length >= 2) {
+    const total = subs.reduce((s, t) => s + Math.abs(t.amount), 0)
     result.push({
-      id: "income-drop",
-      tone: "danger",
-      text: `Sua receita mensal apresentou redução de ${Math.round(((prevIncome - income) / prevIncome) * 100)}% em comparação ao período anterior.`,
+      id: "subs",
+      tone: "info",
+      text: `Você tem ${subs.length} assinaturas recorrentes somando ${money(total)} por mês. Vale revisar se todas ainda são necessárias.`,
     })
-  const reserve = goals.find((g) => g.name.toLowerCase().includes("reserva"))
-  const daily = averageMonthlyExpense(list) / 30
-  if (reserve && daily > 0) {
-    const days = Math.floor(reserve.saved / daily)
-    if (days < 180)
-      result.push({
-        id: "reserve",
-        tone: "warn",
-        text: `Sua reserva financeira atual cobre apenas ${days} dias de despesas médias.`,
-      })
   }
   return result
 }
-
-export { monthLabel }
 
 const groupExpenses = (list: Transaction[], pick: (t: Transaction) => string) => {
   const result: Record<string, number> = {}

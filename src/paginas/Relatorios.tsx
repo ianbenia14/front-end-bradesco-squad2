@@ -1,5 +1,5 @@
 import { useState } from "react"
-import type { Budget, Transaction } from "../tipos"
+import type { Budget, ReportSnapshot, Transaction } from "../tipos"
 import {
   categoryTotals,
   establishmentTotals,
@@ -13,6 +13,9 @@ import {
 import { REF_MONTH, monthKey, monthLabel, monthShort, prevMonthKey } from "../utilitarios/datas"
 import { type Filtros, aplicarFiltros, filtrosVazios } from "../utilitarios/filtros"
 import { money, moneySigned, pct, round2 } from "../utilitarios/formatacao"
+import { baixarArquivo, csvLinha } from "../utilitarios/exportar"
+import { buildSnapshot } from "../utilitarios/relatorios"
+import { Botao } from "../componentes/Botao"
 import { Cabecalho } from "../componentes/Cabecalho"
 import { Cartao } from "../componentes/Cartao"
 import { CartaoEstatistica } from "../componentes/CartaoEstatistica"
@@ -23,7 +26,17 @@ import { Icone } from "../componentes/Icone"
 import { Selecao } from "../componentes/Selecao"
 import { TituloSecao } from "../componentes/TituloSecao"
 
-export function Relatorios({ items, budgets }: { items: Transaction[]; budgets: Budget[] }) {
+export function Relatorios({
+  items,
+  budgets,
+  reports,
+  setReports,
+}: {
+  items: Transaction[]
+  budgets: Budget[]
+  reports: ReportSnapshot[]
+  setReports: React.Dispatch<React.SetStateAction<ReportSnapshot[]>>
+}) {
   const [filtros, setFiltros] = useState<Filtros>(filtrosVazios)
   const [mode, setMode] = useState<"month" | "year">("month")
   const [month, setMonth] = useState(REF_MONTH)
@@ -66,6 +79,23 @@ export function Relatorios({ items, budgets }: { items: Transaction[]; budgets: 
     { label: "Economia", value: balance, diff: round2(balance - prevBalance), up: true },
   ].map((item) => ({ ...item, good: item.up ? item.diff >= 0 : item.diff <= 0 }))
 
+  const saveSnapshot = () => {
+    const snap = buildSnapshot(items, budgets, month)
+    setReports((cur) => [snap, ...cur.filter((r) => r.month !== month)])
+  }
+  const exportCsv = (title: string, inc: number, exp: number, rank: [string, number][]) => {
+    const total = rank.reduce((s, [, v]) => s + v, 0)
+    const lines = [
+      csvLinha(["Relatório", title]),
+      csvLinha(["Total recebido", inc.toFixed(2).replace(".", ",")]),
+      csvLinha(["Total gasto", exp.toFixed(2).replace(".", ",")]),
+      csvLinha(["Saldo final", (inc - exp).toFixed(2).replace(".", ",")]),
+      "",
+      csvLinha(["Categoria", "Valor", "Percentual"]),
+      ...rank.map(([n, v]) => csvLinha([n, v.toFixed(2).replace(".", ","), total ? `${Math.round((v / total) * 100)}%` : "0%"])),
+    ]
+    baixarArquivo(`relatorio-${title.replace(/\s+/g, "-").toLowerCase()}.csv`, lines.join("\n"))
+  }
   const periodName = custom ? "período filtrado" : mode === "year" ? "ano" : "mês"
 
   return (
@@ -84,6 +114,19 @@ export function Relatorios({ items, budgets }: { items: Transaction[]; budgets: 
               ))}
             </Selecao>
           )}
+        </div>
+        <div className="report-actions no-print">
+          {mode === "month" && !custom && (
+            <Botao variant="secondary" onClick={saveSnapshot}>
+              Salvar relatório do mês
+            </Botao>
+          )}
+          <Botao variant="secondary" onClick={() => exportCsv(custom ? "periodo-filtrado" : mode === "year" ? year : month, income, expense, ranking)}>
+            Exportar CSV
+          </Botao>
+          <Botao variant="secondary" onClick={() => window.print()}>
+            Exportar PDF
+          </Botao>
         </div>
         <FiltrosFinanceiros filtros={filtros} setFiltros={setFiltros} />
         {custom && <p className="plan-total">Datas informadas: o relatório usa o período filtrado no lugar do mês/ano.</p>}
@@ -118,7 +161,7 @@ export function Relatorios({ items, budgets }: { items: Transaction[]; budgets: 
               labels={chartMonths.map(monthShort)}
               series={[
                 { name: "Receitas", color: "#0f766e", values: chartMonths.map((k) => monthTotal(filtered, k, "income")) },
-                { name: "Despesas", color: "#d49a64", values: chartMonths.map((k) => monthTotal(filtered, k, "expense")) },
+                { name: "Despesas", color: "#F2B84B", values: chartMonths.map((k) => monthTotal(filtered, k, "expense")) },
               ]}
             />
           </Cartao>
@@ -187,6 +230,30 @@ export function Relatorios({ items, budgets }: { items: Transaction[]; budgets: 
                 </div>
               ))}
               {!trend.length && <div className="empty-state">Sem dados no período.</div>}
+            </div>
+          </Cartao>
+          <Cartao className="comparison-card no-print">
+            <TituloSecao title="Histórico de relatórios mensais" />
+            <div className="rank-list">
+              {[...reports].sort((a, b) => b.month.localeCompare(a.month)).map((r) => (
+                <div key={r.id}>
+                  <span>
+                    {monthLabel(r.month)} · saldo {moneySigned(r.balance)} · score {r.score}
+                  </span>
+                  <span className="snap-actions">
+                    <button className="link-button" onClick={() => exportCsv(r.month, r.income, r.expense, r.ranking)}>
+                      CSV
+                    </button>
+                    <button className="link-button" onClick={() => { setMode("month"); setMonth(r.month); setFiltros(filtrosVazios) }}>
+                      Abrir
+                    </button>
+                    <button className="link-button danger-link" onClick={() => setReports((cur) => cur.filter((x) => x.id !== r.id))}>
+                      Excluir
+                    </button>
+                  </span>
+                </div>
+              ))}
+              {!reports.length && <div className="empty-state">Nenhum relatório salvo ainda. Os meses encerrados são guardados automaticamente.</div>}
             </div>
           </Cartao>
           <Cartao className="report-score">

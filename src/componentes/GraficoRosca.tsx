@@ -1,6 +1,6 @@
 import { money } from "../utilitarios/formatacao"
 
-const palette = ["#0f766e", "#c97731", "#4b83bd", "#8068ad", "#aab4ba"]
+const palette = ["#0F766E", "#F2B84B", "#2F80B7", "#7C5CC4", "#E4572E", "#9AA7AE"]
 
 export function GraficoRosca({ data }: { data: [string, number][] }) {
   const total = data.reduce((s, [, v]) => s + v, 0)
@@ -8,12 +8,11 @@ export function GraficoRosca({ data }: { data: [string, number][] }) {
   const top = data.slice(0, 4)
   const rest = data.slice(4).reduce((s, [, v]) => s + v, 0)
   const slices: [string, number][] = rest ? [...top, ["Outras", rest]] : top
-  let acc = 0
   const stops = slices
     .map(([, v], i) => {
-      const start = acc
-      acc += (v / total) * 100
-      return `${palette[i]} ${start}% ${acc}%`
+      const start = (slices.slice(0, i).reduce((sum, [, x]) => sum + x, 0) / total) * 100
+      const end = start + (v / total) * 100
+      return `${palette[i]} ${start}% ${end}%`
     })
     .join(", ")
   return (

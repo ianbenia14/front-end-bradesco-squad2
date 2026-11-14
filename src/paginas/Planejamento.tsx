@@ -1,7 +1,7 @@
 import { useState } from "react"
 import type { Goal, IncomeProfile, Transaction } from "../tipos"
 import { needsCategories, savingsCategories, wantsCategories } from "../dados/categorias"
-import { averageMonthlyExpense, expenseByCategory, monthTotal, monthsWithData } from "../utilitarios/calculos"
+import { averageMonthlyExpense, expenseByCategory, findReserve, monthTotal, monthsWithData } from "../utilitarios/calculos"
 import { REF_MONTH, monthShort } from "../utilitarios/datas"
 import { GraficoBarras } from "../componentes/GraficoBarras"
 import { money, parseMoneyValue, round2, toInputValue } from "../utilitarios/formatacao"
@@ -35,22 +35,19 @@ export function Planejamento({
 
   const avgExpense = averageMonthlyExpense(items)
   const reserveTarget = round2(avgExpense * 6)
-  const reserveGoal = goals.find((g) => g.name.toLowerCase().includes("reserva"))
+  const reserveGoal = findReserve(goals)
   const reserveSaved = reserveGoal?.saved ?? 0
   const monthlyInvest = Math.max(0, round2((reserveTarget - reserveSaved) / 24))
   const minInvest = round2(income * 0.2)
   const invested = items
     .filter((t) => t.category === "Investimentos")
     .reduce((s, t) => s + Math.abs(t.amount), 0)
-  const patrimony = round2(goals.reduce((s, g) => s + g.saved, 0) + invested)
+  const patrimony = round2(invested)
 
-  const baseSaved = goals.reduce((s, g) => s + g.saved, 0)
   const months = Array.from(new Set([...monthsWithData(items), REF_MONTH])).sort()
-  let running = baseSaved
-  const evolution = months.map((k) => {
-    running += monthTotal(items, k, "expense", "Investimentos")
-    return round2(running)
-  })
+  const evolution = months.map((_, i) =>
+    round2(months.slice(0, i + 1).reduce((sum, m) => sum + monthTotal(items, m, "expense", "Investimentos"), 0)),
+  )
   return (
     <>
       <Cabecalho
@@ -106,7 +103,7 @@ export function Planejamento({
               <div><span>Investimento mínimo mensal (20%)</span><strong>{money(minInvest)}</strong></div>
               <div><span>Reserva de emergência ideal (6 meses)</span><strong>{money(reserveTarget)}</strong></div>
               <div><span>Reserva atual</span><strong>{money(reserveSaved)}</strong></div>
-              <div><span>Patrimônio acumulado</span><strong>{money(patrimony)}</strong></div>
+              <div><span>Patrimônio investido (soma dos aportes)</span><strong>{money(patrimony)}</strong></div>
             </div>
             <p className="insight-text">
               Com sua renda atual, recomenda-se investir pelo menos{" "}

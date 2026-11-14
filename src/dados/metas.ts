@@ -3,6 +3,7 @@ import type { Goal, IconName } from "../tipos"
 const goals = [
   {
     name: "Reserva de emergência",
+    kind: "reserve" as const,
     icon: "flag" as IconName,
     saved: 12500,
     target: 30000,

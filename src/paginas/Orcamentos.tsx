@@ -7,6 +7,7 @@ import { money, parseMoneyValue, toInputValue } from "../utilitarios/formatacao"
 import { Alertas } from "../componentes/Alertas"
 import { Aviso } from "../componentes/Aviso"
 import { Botao } from "../componentes/Botao"
+import { Modal } from "../componentes/Modal"
 import { Cabecalho } from "../componentes/Cabecalho"
 import { Campo } from "../componentes/Campo"
 import { Cartao } from "../componentes/Cartao"
@@ -177,13 +178,11 @@ export function Orcamentos({
         </Cartao>
       </div>
       {(formOpen || editing) && (
-        <div className="modal-backdrop" onMouseDown={closeForm}>
-          <Cartao className="modal">
-            <div onMouseDown={(e) => e.stopPropagation()}>
+        <Modal onClose={closeForm} label="Formulário">
               <TituloSecao
                 title={editing ? "Editar orçamento" : "Criar orçamento"}
                 action={
-                  <button className="icon-button" onClick={closeForm}>
+                  <button className="icon-button" aria-label="Fechar" onClick={closeForm}>
                     <Icone name="x" />
                   </button>
                 }
@@ -257,18 +256,10 @@ export function Orcamentos({
                   </Botao>
                 </div>
               </form>
-            </div>
-          </Cartao>
-        </div>
+            </Modal>
       )}
       {deleting && (
-        <div className="modal-backdrop" onMouseDown={() => setDeleting(null)}>
-          <Cartao className="modal">
-            <div
-              role="dialog"
-              aria-label="Excluir orçamento"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
+        <Modal onClose={() => setDeleting(null)} label="Confirmar exclusão">
               <TituloSecao title="Excluir orçamento" />
               <p style={{ margin: "8px 0 22px", color: "#64727b" }}>
                 Excluir o orçamento de "{deleting.category}"? Essa ação não pode
@@ -299,9 +290,7 @@ export function Orcamentos({
                   Excluir
                 </Botao>
               </div>
-            </div>
-          </Cartao>
-        </div>
+            </Modal>
       )}
       <Aviso toast={toast} onClose={() => setToast(null)} />
     </>

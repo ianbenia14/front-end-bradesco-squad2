@@ -6,6 +6,7 @@ import { averageMonthlySaving } from "../utilitarios/calculos"
 import { goalInfo } from "../utilitarios/metas"
 import { Aviso } from "../componentes/Aviso"
 import { Botao } from "../componentes/Botao"
+import { Modal } from "../componentes/Modal"
 import { Cabecalho } from "../componentes/Cabecalho"
 import { Campo } from "../componentes/Campo"
 import { Cartao } from "../componentes/Cartao"
@@ -198,13 +199,11 @@ export function Metas({
         </Cartao>
       </div>
       {(formOpen || editing) && (
-        <div className="modal-backdrop" onMouseDown={closeForm}>
-          <Cartao className="modal">
-            <div onMouseDown={(e) => e.stopPropagation()}>
+        <Modal onClose={closeForm} label="Formulário">
               <TituloSecao
                 title={editing ? "Editar meta" : "Nova meta"}
                 action={
-                  <button className="icon-button" onClick={closeForm}>
+                  <button className="icon-button" aria-label="Fechar" onClick={closeForm}>
                     <Icone name="x" />
                   </button>
                 }
@@ -227,6 +226,7 @@ export function Metas({
                     saved: Math.min(savedValue || 0, target),
                     target,
                     deadline: `${monthNames[month] ?? "Dez"} ${year}`,
+                    kind: form.get("reserve") === "on" ? "reserve" : "other",
                     color: editing
                       ? editing.color
                       : items.length % 2 === 0
@@ -280,6 +280,14 @@ export function Metas({
                   }
                   required
                 />
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    name="reserve"
+                    defaultChecked={editing ? editing.kind === "reserve" : false}
+                  />
+                  Esta é a minha reserva de emergência
+                </label>
                 <div className="modal-actions">
                   <Botao
                     type="button"
@@ -293,18 +301,10 @@ export function Metas({
                   </Botao>
                 </div>
               </form>
-            </div>
-          </Cartao>
-        </div>
+            </Modal>
       )}
       {deleting && (
-        <div className="modal-backdrop" onMouseDown={() => setDeleting(null)}>
-          <Cartao className="modal">
-            <div
-              role="dialog"
-              aria-label="Excluir meta"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
+        <Modal onClose={() => setDeleting(null)} label="Confirmar exclusão">
               <TituloSecao title="Excluir meta" />
               <p style={{ margin: "8px 0 22px", color: "#64727b" }}>
                 Excluir a meta "{deleting.name}"? Essa ação não pode ser
@@ -335,14 +335,10 @@ export function Metas({
                   Excluir
                 </Botao>
               </div>
-            </div>
-          </Cartao>
-        </div>
+            </Modal>
       )}
       {progressing && (
-        <div className="modal-backdrop" onMouseDown={() => setProgressing(null)}>
-          <Cartao className="modal">
-            <div onMouseDown={(e) => e.stopPropagation()}>
+        <Modal onClose={() => setProgressing(null)} label="Formulário">
               <TituloSecao title={`Registrar progresso: ${progressing.name}`} />
               <form
                 onSubmit={(e) => {
@@ -359,9 +355,7 @@ export function Metas({
                   <Botao type="submit">Registrar</Botao>
                 </div>
               </form>
-            </div>
-          </Cartao>
-        </div>
+            </Modal>
       )}
       <Aviso toast={toast} onClose={() => setToast(null)} />
     </>

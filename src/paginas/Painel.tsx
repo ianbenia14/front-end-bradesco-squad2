@@ -6,6 +6,7 @@ import {
   categoryTotals,
   establishmentTotals,
   inMonth,
+  sortByDateDesc,
   monthTotal,
   scoreFor,
   scoreLevel,
@@ -117,7 +118,7 @@ export function Painel({
               }
             />
             {items.length ? (
-              <ListaTransacoes items={(active ? scoped : items).slice(0, 3)} />
+              <ListaTransacoes items={sortByDateDesc(active ? scoped : items).slice(0, 3)} />
             ) : (
               <p className="insight-empty">Nenhuma transação ainda. Registre a primeira em Transações.</p>
             )}
@@ -163,7 +164,7 @@ export function Painel({
               labels={months.map(monthShort)}
               series={[
                 { name: "Receitas", color: "#0f766e", values: months.map((k) => monthTotal(chartList, k, "income")) },
-                { name: "Despesas", color: "#d49a64", values: months.map((k) => monthTotal(chartList, k, "expense")) },
+                { name: "Despesas", color: "#F2B84B", values: months.map((k) => monthTotal(chartList, k, "expense")) },
               ]}
             />
           </Cartao>

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react"
-import type { Budget, Goal, IncomeProfile, PublicScreen, Screen, Transaction } from "./tipos"
+import { useEffect, useRef, useState } from "react"
+import type { Budget, Goal, IncomeProfile, PublicScreen, ReportSnapshot, Screen, Transaction } from "./tipos"
+import { AlertasContext } from "./contexto/alertas"
 import { UsuarioContext, type UsuarioAtual } from "./contexto/usuario"
 import { initialGoals } from "./dados/metas"
 import { initialBudgets } from "./dados/orcamentos"
@@ -15,12 +16,17 @@ import {
   salvarSessao,
   sessaoAtual,
 } from "./servicos/autenticacao"
-import { setReference } from "./utilitarios/datas"
+import { DEFAULT_DATE, REF_MONTH, setReference } from "./utilitarios/datas"
+import { buildInsights } from "./utilitarios/calculos"
+import { aplicarRecorrencias } from "./utilitarios/recorrencia"
+import { snapshotsFaltantes } from "./utilitarios/relatorios"
+import { hashFor, parseHash } from "./utilitarios/rotas"
 import { BarraLateral } from "./componentes/BarraLateral"
 import { Ajuda } from "./paginas/Ajuda"
 import { BoasVindas } from "./paginas/BoasVindas"
 import { Cadastro } from "./paginas/Cadastro"
 import { Configuracoes } from "./paginas/Configuracoes"
+import { Educacao } from "./paginas/Educacao"
 import { Ferramentas } from "./paginas/Ferramentas"
 import { Login } from "./paginas/Login"
 import { Metas } from "./paginas/Metas"
@@ -33,20 +39,37 @@ import { Transacoes } from "./paginas/Transacoes"
 
 const demoProfile: IncomeProfile = { salary: 8200, recurring: 0, variable: 1850 }
 
+// Gera recorrências pendentes e guarda os relatórios dos meses encerrados
+const prepararDados = (data: ReturnType<typeof carregarDados>) => {
+  const transactions = aplicarRecorrencias(data.transactions, DEFAULT_DATE)
+  const reports = [
+    ...snapshotsFaltantes(transactions, data.budgets, data.reports, REF_MONTH),
+    ...data.reports,
+  ]
+  return { ...data, transactions, reports }
+}
+
 export default function App() {
   const [boot] = useState(() => {
     const user = sessaoAtual()
     setReference(false)
-    return { user, data: user ? carregarDados(user.id) : dadosVazios() }
+    const rota = parseHash(window.location.hash)
+    return {
+      user,
+      data: user ? prepararDados(carregarDados(user.id)) : dadosVazios(),
+      screen: user && rota?.kind === "app" ? rota.screen : ("dashboard" as Screen),
+      publicScreen: !user && rota?.kind === "public" ? rota.screen : ("welcome" as PublicScreen),
+    }
   })
   const [user, setUser] = useState<Usuario | null>(boot.user)
   const [guest, setGuest] = useState(false)
-  const [publicScreen, setPublicScreen] = useState<PublicScreen>("welcome")
-  const [screen, setScreen] = useState<Screen>("dashboard")
+  const [publicScreen, setPublicScreen] = useState<PublicScreen>(boot.publicScreen)
+  const [screen, setScreen] = useState<Screen>(boot.screen)
   const [transactionItems, setTransactionItems] = useState<Transaction[]>(boot.data.transactions)
   const [budgetItems, setBudgetItems] = useState<Budget[]>(boot.data.budgets)
   const [goalItems, setGoalItems] = useState<Goal[]>(boot.data.goals)
   const [profile, setProfile] = useState<IncomeProfile>(boot.data.profile)
+  const [reports, setReports] = useState<ReportSnapshot[]>(boot.data.reports)
 
   // Persistência por usuário (histórico sem perda de dados). Convidado não salva.
   useEffect(() => {
@@ -56,17 +79,19 @@ export default function App() {
       budgets: budgetItems,
       goals: goalItems,
       profile,
+      reports,
     })
-  }, [user, transactionItems, budgetItems, goalItems, profile])
+  }, [user, transactionItems, budgetItems, goalItems, profile, reports])
 
   const startSession = (u: Usuario, remember: boolean) => {
-    const data = carregarDados(u.id)
     setReference(false)
+    const data = prepararDados(carregarDados(u.id))
     salvarSessao(u.id, remember)
     setTransactionItems(data.transactions)
     setBudgetItems(data.budgets)
     setGoalItems(data.goals)
     setProfile(data.profile)
+    setReports(data.reports)
     setGuest(false)
     setScreen("dashboard")
     setUser(u)
@@ -78,6 +103,7 @@ export default function App() {
     setBudgetItems(initialBudgets)
     setGoalItems(initialGoals)
     setProfile(demoProfile)
+    setReports([])
     setUser(null)
     setGuest(true)
     setScreen("dashboard")
@@ -91,11 +117,41 @@ export default function App() {
     setBudgetItems([])
     setGoalItems([])
     setProfile(dadosVazios().profile)
+    setReports([])
     setReference(false)
     setPublicScreen("welcome")
   }
 
   const authed = Boolean(user) || guest
+  const lastAuthed = useRef(authed)
+
+  // Histórico do navegador: o botão "voltar" navega entre as telas do site
+  useEffect(() => {
+    const target = hashFor(authed, publicScreen, screen)
+    if (window.location.hash !== target) {
+      if (lastAuthed.current !== authed) window.history.replaceState(null, "", target)
+      else window.history.pushState(null, "", target)
+    }
+    lastAuthed.current = authed
+    window.scrollTo(0, 0)
+  }, [authed, publicScreen, screen])
+
+  useEffect(() => {
+    const onPop = () => {
+      const rota = parseHash(window.location.hash)
+      if (authed) {
+        if (rota?.kind === "app") setScreen(rota.screen)
+        else window.history.replaceState(null, "", hashFor(true, publicScreen, screen))
+      } else if (rota?.kind === "public") {
+        setPublicScreen(rota.screen)
+      } else {
+        setPublicScreen("welcome")
+        window.history.replaceState(null, "", "#/welcome")
+      }
+    }
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [authed, publicScreen, screen])
 
   // Sem cadastro/sessão válida, só as telas públicas são acessíveis
   if (!authed) {
@@ -109,12 +165,14 @@ export default function App() {
     return <BoasVindas goTo={setPublicScreen} onGuest={startGuest} />
   }
 
+  const alertas = buildInsights(transactionItems, budgetItems, goalItems)
   const current: UsuarioAtual = user
     ? { id: user.id, name: user.name, email: user.email, guest: false }
     : { id: "convidado", name: "Convidado", email: "", guest: true }
 
   return (
     <UsuarioContext.Provider value={current}>
+      <AlertasContext.Provider value={alertas}>
       <div className="app-shell">
         <BarraLateral screen={screen} setScreen={setScreen} onLogout={logout} />
         <main className="main-area">
@@ -153,7 +211,17 @@ export default function App() {
           {screen === "goals" && (
             <Metas items={goalItems} setItems={setGoalItems} transactionItems={transactionItems} />
           )}
-          {screen === "reports" && <Relatorios items={transactionItems} budgets={budgetItems} />}
+          {screen === "reports" && (
+            <Relatorios
+              items={transactionItems}
+              budgets={budgetItems}
+              reports={reports}
+              setReports={setReports}
+            />
+          )}
+          {screen === "education" && (
+            <Educacao items={transactionItems} budgets={budgetItems} goals={goalItems} />
+          )}
           {screen === "planning" && (
             <Planejamento
               profile={profile}
@@ -178,6 +246,7 @@ export default function App() {
                 setBudgetItems(empty.budgets)
                 setGoalItems(empty.goals)
                 setProfile(empty.profile)
+                setReports([])
               }}
               onDeleteAccount={() => {
                 if (!user) return
@@ -191,6 +260,7 @@ export default function App() {
           )}
         </main>
       </div>
+      </AlertasContext.Provider>
     </UsuarioContext.Provider>
   )
 }

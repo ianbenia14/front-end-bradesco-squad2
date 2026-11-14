@@ -1,4 +1,4 @@
-import type { Budget, Goal, IncomeProfile, Transaction } from "../tipos"
+import type { Budget, Goal, IncomeProfile, ReportSnapshot, Transaction } from "../tipos"
 
 // ATENÇÃO: autenticação apenas no navegador (localStorage), usada enquanto o
 // back-end não está integrado. Troque estas funções por chamadas à API.
@@ -17,6 +17,7 @@ export type DadosUsuario = {
   budgets: Budget[]
   goals: Goal[]
   profile: IncomeProfile
+  reports: ReportSnapshot[]
 }
 
 const USERS = "saldomais:usuarios"
@@ -139,6 +140,7 @@ export const dadosVazios = (): DadosUsuario => ({
   budgets: [],
   goals: [],
   profile: { salary: 0, recurring: 0, variable: 0 },
+  reports: [],
 })
 
 const dadosKey = (id: string) => `saldomais:dados:${id}`
