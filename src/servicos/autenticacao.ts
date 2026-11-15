@@ -1,14 +1,16 @@
 import type { Budget, Goal, IncomeProfile, ReportSnapshot, Transaction } from "../tipos"
+import { ErroApi } from "./api"
+import { usuariosApi } from "./apiFinancas"
+import type { Usuario as UsuarioApi } from "./apiFinancas"
 
-// ATENÇÃO: autenticação apenas no navegador (localStorage), usada enquanto o
-// back-end não está integrado. Troque estas funções por chamadas à API.
+// Conta e login passam pela API (back-end Spring Boot).
+// O back-end ainda não devolve token: os dados do usuário (sem senha) ficam no navegador
+// para manter a sessão. Os dados financeiros continuam locais até as demais telas serem integradas.
 
 export type Usuario = {
   id: string
   name: string
   email: string
-  hash: string
-  salt: string
   createdAt: string
 }
 
@@ -43,34 +45,38 @@ const write = (storage: Storage, key: string, value: unknown) => {
   }
 }
 
-const sha256 = async (text: string) => {
-  if (globalThis.crypto?.subtle) {
-    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))
-    return Array.from(new Uint8Array(buf))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("")
-  }
-  let h = 5381
-  for (let i = 0; i < text.length; i++) h = (h * 33) ^ text.charCodeAt(i)
-  return String(h >>> 0)
-}
-
-const randomSalt = () =>
-  Array.from(crypto.getRandomValues(new Uint8Array(16)))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-
 export const normalizarEmail = (email: string) => email.trim().toLowerCase()
 export const emailValido = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)
 
 export const validarSenha = (senha: string) => {
   if (senha.length < 8) return "A senha deve ter pelo menos 8 caracteres."
+  if (senha.length > 72) return "A senha deve ter no máximo 72 caracteres."
   if (!/[A-Za-z]/.test(senha) || !/\d/.test(senha))
     return "A senha deve conter letras e números."
   return ""
 }
 
+// Usuários já autenticados neste navegador (sem senha): servem para restaurar a sessão
 const usuarios = () => read<Usuario[]>(localStorage, USERS, [])
+
+const deApi = (u: UsuarioApi): Usuario => ({
+  id: String(u.id),
+  name: u.nome,
+  email: u.email,
+  createdAt: u.criadoEm,
+})
+
+const guardar = (usuario: Usuario) =>
+  write(localStorage, USERS, [...usuarios().filter((u) => u.id !== usuario.id), usuario])
+
+/** Mensagem do primeiro campo inválido, ou a mensagem geral do erro. */
+const textoDoErro = (e: unknown): string => {
+  if (e instanceof ErroApi) {
+    const campo = e.campos ? Object.values(e.campos)[0] : undefined
+    return campo ?? e.message
+  }
+  return e instanceof Error ? e.message : "Ocorreu um erro inesperado."
+}
 
 export const registrar = async (name: string, email: string, senha: string) => {
   const mail = normalizarEmail(email)
@@ -78,20 +84,17 @@ export const registrar = async (name: string, email: string, senha: string) => {
   if (!emailValido(mail)) throw new Error("Informe um e-mail válido.")
   const erro = validarSenha(senha)
   if (erro) throw new Error(erro)
-  const lista = usuarios()
-  if (lista.some((u) => u.email === mail))
-    throw new Error("Já existe uma conta com este e-mail. Faça login.")
-  const salt = randomSalt()
-  const usuario: Usuario = {
-    id: `u${Date.now()}`,
-    name: name.trim(),
-    email: mail,
-    salt,
-    hash: await sha256(salt + senha),
-    createdAt: new Date().toISOString(),
+  try {
+    // A renda mensal começa em 0: o cadastro do front não pede esse dado
+    const criado = await usuariosApi.criar({ nome: name.trim(), email: mail, senha, rendaMensal: 0 })
+    const usuario = deApi(criado)
+    guardar(usuario)
+    return usuario
+  } catch (e) {
+    if (e instanceof ErroApi && e.status === 409)
+      throw new Error("Já existe uma conta com este e-mail. Faça login.", { cause: e })
+    throw new Error(textoDoErro(e), { cause: e })
   }
-  write(localStorage, USERS, [...lista, usuario])
-  return usuario
 }
 
 export const entrar = async (email: string, senha: string) => {
@@ -100,19 +103,22 @@ export const entrar = async (email: string, senha: string) => {
     const s = Math.ceil((tentativas.until - Date.now()) / 1000)
     throw new Error(`Muitas tentativas. Tente novamente em ${s}s.`)
   }
-  const mail = normalizarEmail(email)
-  const usuario = usuarios().find((u) => u.email === mail)
-  const ok = usuario ? (await sha256(usuario.salt + senha)) === usuario.hash : false
-  if (!usuario || !ok) {
-    const count = tentativas.count + 1
-    write(localStorage, ATTEMPTS, {
-      count: count >= MAX_ATTEMPTS ? 0 : count,
-      until: count >= MAX_ATTEMPTS ? Date.now() + LOCK_MS : 0,
-    })
-    throw new Error("E-mail ou senha incorretos, ou conta não cadastrada.")
+  try {
+    const usuario = deApi(await usuariosApi.login(normalizarEmail(email), senha))
+    localStorage.removeItem(ATTEMPTS)
+    guardar(usuario)
+    return usuario
+  } catch (e) {
+    if (e instanceof ErroApi && e.status === 401) {
+      const count = tentativas.count + 1
+      write(localStorage, ATTEMPTS, {
+        count: count >= MAX_ATTEMPTS ? 0 : count,
+        until: count >= MAX_ATTEMPTS ? Date.now() + LOCK_MS : 0,
+      })
+      throw new Error("E-mail ou senha incorretos, ou conta não cadastrada.", { cause: e })
+    }
+    throw new Error(textoDoErro(e), { cause: e })
   }
-  localStorage.removeItem(ATTEMPTS)
-  return usuario
 }
 
 export const salvarSessao = (id: string, lembrar: boolean) => {
@@ -126,7 +132,7 @@ export const encerrarSessao = () => {
   localStorage.removeItem(SESSION)
 }
 
-// Só devolve usuário se ele realmente estiver cadastrado
+// Só devolve usuário se ele já tiver feito login neste navegador
 export const sessaoAtual = (): Usuario | null => {
   const s =
     read<{ id: string } | null>(sessionStorage, SESSION, null) ??
@@ -154,6 +160,8 @@ export const salvarDados = (id: string, dados: DadosUsuario) => write(localStora
 
 export const excluirDados = (id: string) => localStorage.removeItem(dadosKey(id))
 
+// ATENÇÃO: o back-end ainda não tem rota para excluir usuário.
+// Por enquanto isto só apaga os dados e a sessão deste navegador; a conta continua no banco.
 export const excluirConta = (id: string) => {
   excluirDados(id)
   write(localStorage, USERS, usuarios().filter((u) => u.id !== id))

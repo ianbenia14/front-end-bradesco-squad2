@@ -1,8 +1,15 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { Transaction } from "../tipos"
 import { useUsuario } from "../contexto/usuario"
 import { type Filtros, aplicarFiltros, filtrosVazios } from "../utilitarios/filtros"
 import { sortByDateDesc } from "../utilitarios/calculos"
+import { mensagemDoErro } from "../servicos/api"
+import {
+  carregarTransacoes,
+  excluirTransacao,
+  gravarTransacao,
+  importarTransacoes,
+} from "../servicos/transacoes"
 import { ImportarExtrato } from "../componentes/ImportarExtrato"
 import { FiltrosFinanceiros } from "../componentes/FiltrosFinanceiros"
 import { Botao } from "../componentes/Botao"
@@ -22,6 +29,10 @@ export function Transacoes({
   setItems: React.Dispatch<React.SetStateAction<Transaction[]>>
 }) {
   const usuario = useUsuario()
+  // Só contas criadas no back end (id numérico) usam a API; convidado e contas antigas seguem locais
+  const idApi = Number(usuario.id)
+  const usaApi = Number.isInteger(idApi) && idApi > 0
+
   const [filtros, setFiltros] = useState<Filtros>(filtrosVazios)
   const [search, setSearch] = useState("")
   const [page, setPage] = useState(1)
@@ -29,6 +40,24 @@ export function Transacoes({
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [deleting, setDeleting] = useState<Transaction | null>(null)
+  const [erro, setErro] = useState("")
+
+  useEffect(() => {
+    if (!usaApi) return
+    let ativo = true
+    carregarTransacoes(idApi)
+      .then((lista) => {
+        if (ativo) setItems(lista)
+      })
+      .catch((e) => {
+        if (ativo) setErro(mensagemDoErro(e))
+      })
+    return () => {
+      ativo = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idApi, usaApi])
+
   const filtered = useMemo(
     () =>
       sortByDateDesc(aplicarFiltros(items, filtros)).filter((item) =>
@@ -44,6 +73,48 @@ export function Transacoes({
     setModal(false)
     setEditing(null)
   }
+
+  const salvar = async (t: Transaction) => {
+    setErro("")
+    try {
+      const salva = usaApi
+        ? await gravarTransacao(idApi, t, editing ? editing.id : null)
+        : { ...t, userId: usuario.id }
+      setItems((current) =>
+        editing ? current.map((item) => (item.id === salva.id ? salva : item)) : [salva, ...current],
+      )
+      closeForm()
+    } catch (e) {
+      setErro(mensagemDoErro(e))
+    }
+  }
+
+  const importar = async (lista: Transaction[]) => {
+    setErro("")
+    try {
+      const novas = usaApi
+        ? await importarTransacoes(idApi, lista)
+        : lista.map((t) => ({ ...t, userId: usuario.id }))
+      setItems((current) => [...novas, ...current])
+    } catch (e) {
+      setErro(mensagemDoErro(e))
+    }
+    setImporting(false)
+  }
+
+  const excluir = async () => {
+    const alvo = deleting
+    if (!alvo) return
+    setErro("")
+    try {
+      if (usaApi) await excluirTransacao(alvo.id)
+      setItems((current) => current.filter((item) => item.id !== alvo.id))
+    } catch (e) {
+      setErro(mensagemDoErro(e))
+    }
+    setDeleting(null)
+  }
+
   return (
     <>
       <Cabecalho
@@ -72,6 +143,11 @@ export function Transacoes({
             </Botao>
           </div>
         </div>
+        {erro && (
+          <p role="alert" style={{ margin: "0 0 12px", color: "#b45309" }}>
+            {erro}
+          </p>
+        )}
         <FiltrosFinanceiros
           filtros={filtros}
           setFiltros={(f) => {
@@ -119,59 +195,51 @@ export function Transacoes({
           existing={items}
           onClose={() => setImporting(false)}
           onImport={(list) => {
-            setItems((current) => [...list.map((t) => ({ ...t, userId: usuario.id })), ...current])
-            setImporting(false)
+            void importar(list)
           }}
         />
       )}
       {(modal || editing) && (
         <Modal onClose={closeForm} label="Formulário">
-              <TituloSecao
-                title={editing ? "Editar transação" : "Nova transação"}
-                action={
-                  <button className="icon-button" aria-label="Fechar" onClick={closeForm}>
-                    <Icone name="x" />
-                  </button>
-                }
-              />
-              <FormularioTransacao
-                key={editing ? editing.id : "new"}
-                editing={editing}
-                onCancel={closeForm}
-                onSave={(saved0) => {
-                  const saved = { ...saved0, userId: usuario.id }
-                  setItems((current) =>
-                    editing
-                      ? current.map((item) => (item.id === saved.id ? saved : item))
-                      : [saved, ...current],
-                  )
-                  closeForm()
-                }}
-              />
-            </Modal>
+          <TituloSecao
+            title={editing ? "Editar transação" : "Nova transação"}
+            action={
+              <button className="icon-button" aria-label="Fechar" onClick={closeForm}>
+                <Icone name="x" />
+              </button>
+            }
+          />
+          <FormularioTransacao
+            key={editing ? editing.id : "new"}
+            editing={editing}
+            onCancel={closeForm}
+            onSave={(saved) => {
+              void salvar(saved)
+            }}
+          />
+        </Modal>
       )}
       {deleting && (
         <Modal onClose={() => setDeleting(null)} label="Confirmar exclusão">
-              <TituloSecao title="Excluir transação" />
-              <p style={{ margin: "8px 0 22px", color: "#64727b" }}>
-                Excluir "{deleting.title}"? Essa ação não pode ser desfeita.
-              </p>
-              <div className="modal-actions">
-                <Botao type="button" variant="secondary" onClick={() => setDeleting(null)}>
-                  Cancelar
-                </Botao>
-                <Botao
-                  type="button"
-                  style={{ background: "#b45309" }}
-                  onClick={() => {
-                    setItems((current) => current.filter((item) => item.id !== deleting.id))
-                    setDeleting(null)
-                  }}
-                >
-                  Excluir
-                </Botao>
-              </div>
-            </Modal>
+          <TituloSecao title="Excluir transação" />
+          <p style={{ margin: "8px 0 22px", color: "#64727b" }}>
+            Excluir "{deleting.title}"? Essa ação não pode ser desfeita.
+          </p>
+          <div className="modal-actions">
+            <Botao type="button" variant="secondary" onClick={() => setDeleting(null)}>
+              Cancelar
+            </Botao>
+            <Botao
+              type="button"
+              style={{ background: "#b45309" }}
+              onClick={() => {
+                void excluir()
+              }}
+            >
+              Excluir
+            </Botao>
+          </div>
+        </Modal>
       )}
     </>
   )
