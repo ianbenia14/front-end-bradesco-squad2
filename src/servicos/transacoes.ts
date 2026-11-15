@@ -1,5 +1,6 @@
 import type { Transaction } from "../tipos"
 import { categoryIcons, incomeCategory } from "../dados/categorias"
+import { fromInputDate, toInputDate } from "../utilitarios/datas"
 import { categoriasApi, transacoesApi } from "./apiFinancas"
 import type { Categoria, Transacao, TransacaoEntrada } from "./apiFinancas"
 
@@ -29,7 +30,7 @@ const MESES: Record<string, number> = {
 
 const semAcento = (texto: string) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
 
-/** Converte qualquer data do front ("15 Nov 2026", "15/11/2026", "2026-11-15") para aaaa-mm-dd. */
+/** Reserva: converte datas como "15 Nov 2026", "15/11/2026" ou "2026-11-15" para aaaa-mm-dd. */
 const normalizarData = (data: string): string => {
   const texto = semAcento(String(data).trim().toLowerCase())
 
@@ -39,7 +40,6 @@ const normalizarData = (data: string): string => {
   const br = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(texto)
   if (br) return `${br[3]}-${doisDigitos(Number(br[2]))}-${doisDigitos(Number(br[1]))}`
 
-  // "15 nov 2026", "15 de novembro de 2026", "15-nov-2026"
   const extenso = /^(\d{1,2})\s*(?:de\s+)?[-\s/.]?\s*([a-z]{3,})\.?\s*(?:de\s+)?[-\s/.]?\s*(\d{4})/.exec(texto)
   if (extenso) {
     const mes = MESES[extenso[2].slice(0, 3)]
@@ -51,6 +51,12 @@ const normalizarData = (data: string): string => {
     return `${d.getFullYear()}-${doisDigitos(d.getMonth() + 1)}-${doisDigitos(d.getDate())}`
   }
   return texto
+}
+
+/** Data do front para aaaa-mm-dd: usa o conversor do próprio front e, se falhar, o de reserva. */
+const paraIso = (data: string): string => {
+  const iso = toInputDate(data)
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : normalizarData(data)
 }
 
 /** Aceita número ou texto ("1.234,56" ou "1234.56") e devolve sempre um número positivo. */
@@ -68,7 +74,7 @@ const paraFront = (t: Transacao): Transaction => {
     id: t.id,
     title: t.descricao,
     category,
-    date: t.dataTransacao,
+    date: fromInputDate(t.dataTransacao.slice(0, 10)),
     amount: t.valor,
     type: receita ? "income" : "expense",
     icon: categoryIcons[category] ?? "wallet",
@@ -88,7 +94,7 @@ const paraApi = async (usuarioId: number, t: Transaction): Promise<TransacaoEntr
     tipo: receita ? "RECEITA" : "DESPESA",
     valor: normalizarValor(t.amount),
     descricao: t.title,
-    dataTransacao: normalizarData(t.date),
+    dataTransacao: paraIso(t.date),
     estabelecimento: t.establishment?.trim() || null,
     recorrente: Boolean(t.recurring),
   }
