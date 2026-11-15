@@ -20,6 +20,47 @@ const idDaCategoria = async (nome: string): Promise<number | null> => {
   return categoria?.id ?? null
 }
 
+const doisDigitos = (n: number) => String(n).padStart(2, "0")
+
+const MESES: Record<string, number> = {
+  jan: 1, fev: 2, feb: 2, mar: 3, abr: 4, apr: 4, mai: 5, may: 5, jun: 6,
+  jul: 7, ago: 8, aug: 8, set: 9, sep: 9, out: 10, oct: 10, nov: 11, dez: 12, dec: 12,
+}
+
+const semAcento = (texto: string) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+
+/** Converte qualquer data do front ("15 Nov 2026", "15/11/2026", "2026-11-15") para aaaa-mm-dd. */
+const normalizarData = (data: string): string => {
+  const texto = semAcento(String(data).trim().toLowerCase())
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(texto)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+
+  const br = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(texto)
+  if (br) return `${br[3]}-${doisDigitos(Number(br[2]))}-${doisDigitos(Number(br[1]))}`
+
+  // "15 nov 2026", "15 de novembro de 2026", "15-nov-2026"
+  const extenso = /^(\d{1,2})\s*(?:de\s+)?[-\s/.]?\s*([a-z]{3,})\.?\s*(?:de\s+)?[-\s/.]?\s*(\d{4})/.exec(texto)
+  if (extenso) {
+    const mes = MESES[extenso[2].slice(0, 3)]
+    if (mes) return `${extenso[3]}-${doisDigitos(mes)}-${doisDigitos(Number(extenso[1]))}`
+  }
+
+  const d = new Date(texto)
+  if (!Number.isNaN(d.getTime())) {
+    return `${d.getFullYear()}-${doisDigitos(d.getMonth() + 1)}-${doisDigitos(d.getDate())}`
+  }
+  return texto
+}
+
+/** Aceita número ou texto ("1.234,56" ou "1234.56") e devolve sempre um número positivo. */
+const normalizarValor = (valor: number | string): number => {
+  if (typeof valor === "number") return Math.abs(valor)
+  const limpo = String(valor).trim()
+  const numero = limpo.includes(",") ? limpo.replace(/\./g, "").replace(",", ".") : limpo
+  return Math.abs(Number(numero))
+}
+
 const paraFront = (t: Transacao): Transaction => {
   const receita = t.tipo === "RECEITA"
   const category = receita ? incomeCategory : (t.categoriaNome ?? "Outros")
@@ -45,9 +86,9 @@ const paraApi = async (usuarioId: number, t: Transaction): Promise<TransacaoEntr
     usuarioId,
     categoriaId: receita ? null : await idDaCategoria(t.category),
     tipo: receita ? "RECEITA" : "DESPESA",
-    valor: Math.abs(t.amount),
+    valor: normalizarValor(t.amount),
     descricao: t.title,
-    dataTransacao: t.date.slice(0, 10), // aaaa-mm-dd
+    dataTransacao: normalizarData(t.date),
     estabelecimento: t.establishment?.trim() || null,
     recorrente: Boolean(t.recurring),
   }
