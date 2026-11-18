@@ -5,6 +5,8 @@ import { UsuarioContext, type UsuarioAtual } from "./contexto/usuario"
 import { initialGoals } from "./dados/metas"
 import { initialBudgets } from "./dados/orcamentos"
 import { transactions } from "./dados/transacoes"
+import { mensagemDoErro } from "./servicos/api"
+import { usuariosApi } from "./servicos/apiFinancas"
 import {
   type Usuario,
   carregarDados,
@@ -16,6 +18,7 @@ import {
   salvarSessao,
   sessaoAtual,
 } from "./servicos/autenticacao"
+import { carregarTransacoes } from "./servicos/transacoes"
 import { DEFAULT_DATE, REF_MONTH, setReference } from "./utilitarios/datas"
 import { buildInsights } from "./utilitarios/calculos"
 import { aplicarRecorrencias } from "./utilitarios/recorrencia"
@@ -39,8 +42,14 @@ import { Transacoes } from "./paginas/Transacoes"
 
 const demoProfile: IncomeProfile = { salary: 8200, recurring: 0, variable: 1850 }
 
-// Gera recorrências pendentes e guarda os relatórios dos meses encerrados
-const prepararDados = (data: ReturnType<typeof carregarDados>) => {
+// Contas criadas no back end têm id numérico; convidado e contas antigas do navegador seguem locais
+const ehApi = (id: string) => /^\d+$/.test(id)
+
+// Gera recorrências pendentes e guarda os relatórios dos meses encerrados.
+// Contas da API: as transações vêm do back end (carregadas depois) e não geram recorrências locais,
+// porque o back end só guarda "recorrente" (sim/não), sem a ligação com a transação de origem.
+const prepararDados = (data: ReturnType<typeof carregarDados>, daApi: boolean) => {
+  if (daApi) return { ...data, transactions: [] as Transaction[] }
   const transactions = aplicarRecorrencias(data.transactions, DEFAULT_DATE)
   const reports = [
     ...snapshotsFaltantes(transactions, data.budgets, data.reports, REF_MONTH),
@@ -56,7 +65,7 @@ export default function App() {
     const rota = parseHash(window.location.hash)
     return {
       user,
-      data: user ? prepararDados(carregarDados(user.id)) : dadosVazios(),
+      data: user ? prepararDados(carregarDados(user.id), ehApi(user.id)) : dadosVazios(),
       screen: user && rota?.kind === "app" ? rota.screen : ("dashboard" as Screen),
       publicScreen: !user && rota?.kind === "public" ? rota.screen : ("welcome" as PublicScreen),
     }
@@ -70,12 +79,32 @@ export default function App() {
   const [goalItems, setGoalItems] = useState<Goal[]>(boot.data.goals)
   const [profile, setProfile] = useState<IncomeProfile>(boot.data.profile)
   const [reports, setReports] = useState<ReportSnapshot[]>(boot.data.reports)
+  const [erroApi, setErroApi] = useState("")
+
+  // Contas da API: busca as transações no back end ao entrar (e ao recarregar a página)
+  useEffect(() => {
+    if (!user || !ehApi(user.id)) return
+    let ativo = true
+    carregarTransacoes(Number(user.id))
+      .then((lista) => {
+        if (!ativo) return
+        setTransactionItems(lista)
+        setErroApi("")
+      })
+      .catch((e) => {
+        if (ativo) setErroApi(mensagemDoErro(e))
+      })
+    return () => {
+      ativo = false
+    }
+  }, [user])
 
   // Persistência por usuário (histórico sem perda de dados). Convidado não salva.
+  // As transações de contas da API ficam só no back end.
   useEffect(() => {
     if (!user) return
     salvarDados(user.id, {
-      transactions: transactionItems,
+      transactions: ehApi(user.id) ? [] : transactionItems,
       budgets: budgetItems,
       goals: goalItems,
       profile,
@@ -85,7 +114,7 @@ export default function App() {
 
   const startSession = (u: Usuario, remember: boolean) => {
     setReference(false)
-    const data = prepararDados(carregarDados(u.id))
+    const data = prepararDados(carregarDados(u.id), ehApi(u.id))
     salvarSessao(u.id, remember)
     setTransactionItems(data.transactions)
     setBudgetItems(data.budgets)
@@ -119,6 +148,7 @@ export default function App() {
     setProfile(dadosVazios().profile)
     setReports([])
     setReference(false)
+    setErroApi("")
     setPublicScreen("welcome")
   }
 
@@ -165,6 +195,41 @@ export default function App() {
     return <BoasVindas goTo={setPublicScreen} onGuest={startGuest} />
   }
 
+  // "Apagar dados": nas contas da API, apaga também no back end (a conta continua)
+  const limparDados = async () => {
+    if (!user) return
+    if (ehApi(user.id)) {
+      try {
+        await usuariosApi.apagarDados(Number(user.id))
+      } catch (e) {
+        setErroApi(mensagemDoErro(e))
+        return
+      }
+    }
+    excluirDados(user.id)
+    const empty = dadosVazios()
+    setTransactionItems(empty.transactions)
+    setBudgetItems(empty.budgets)
+    setGoalItems(empty.goals)
+    setProfile(empty.profile)
+    setReports([])
+  }
+
+  // "Excluir conta": nas contas da API, exclui a conta no back end
+  const apagarConta = async () => {
+    if (!user) return
+    if (ehApi(user.id)) {
+      try {
+        await usuariosApi.excluir(Number(user.id))
+      } catch (e) {
+        setErroApi(mensagemDoErro(e))
+        return
+      }
+    }
+    excluirConta(user.id)
+    logout()
+  }
+
   const alertas = buildInsights(transactionItems, budgetItems, goalItems)
   const current: UsuarioAtual = user
     ? { id: user.id, name: user.name, email: user.email, guest: false }
@@ -188,6 +253,11 @@ export default function App() {
                 Criar minha conta
               </button>
             </div>
+          )}
+          {erroApi && (
+            <p role="alert" style={{ margin: "12px 24px 0", color: "#b45309" }}>
+              {erroApi}
+            </p>
           )}
           {screen === "dashboard" && (
             <Painel
@@ -239,19 +309,10 @@ export default function App() {
                 setPublicScreen("register")
               }}
               onClearData={() => {
-                if (!user) return
-                excluirDados(user.id)
-                const empty = dadosVazios()
-                setTransactionItems(empty.transactions)
-                setBudgetItems(empty.budgets)
-                setGoalItems(empty.goals)
-                setProfile(empty.profile)
-                setReports([])
+                void limparDados()
               }}
               onDeleteAccount={() => {
-                if (!user) return
-                excluirConta(user.id)
-                logout()
+                void apagarConta()
               }}
             />
           )}

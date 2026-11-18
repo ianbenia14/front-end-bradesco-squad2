@@ -5,6 +5,8 @@ import { categoriasApi, transacoesApi } from "./apiFinancas"
 import type { Categoria, Transacao, TransacaoEntrada } from "./apiFinancas"
 
 // Ponte entre as transações do front (Transaction) e as da API (Transacao).
+// No front, a despesa tem valor NEGATIVO e a receita POSITIVO; na API o valor é sempre positivo
+// e o campo "tipo" diz se entra ou sai.
 
 const LOTE = 500 // limite de transações por importação no back end
 let categoriasEmCache: Categoria[] | null = null
@@ -53,8 +55,9 @@ const normalizarData = (data: string): string => {
   return texto
 }
 
-/** Data do front para aaaa-mm-dd: usa o conversor do próprio front e, se falhar, o de reserva. */
+/** Data do front ("15 Nov 2026") para aaaa-mm-dd. Se já vier em ISO, só a devolve. */
 const paraIso = (data: string): string => {
+  if (/^\d{4}-\d{2}-\d{2}/.test(data)) return data.slice(0, 10)
   const iso = toInputDate(data)
   return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : normalizarData(data)
 }
@@ -75,7 +78,7 @@ const paraFront = (t: Transacao): Transaction => {
     title: t.descricao,
     category,
     date: fromInputDate(t.dataTransacao.slice(0, 10)),
-    amount: t.valor,
+    amount: receita ? t.valor : -t.valor, // despesa é negativa no front
     type: receita ? "income" : "expense",
     icon: categoryIcons[category] ?? "wallet",
     establishment: t.estabelecimento ?? undefined,
