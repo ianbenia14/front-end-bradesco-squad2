@@ -18,6 +18,7 @@ import {
   salvarSessao,
   sessaoAtual,
 } from "./servicos/autenticacao"
+import { carregarOrcamentos } from "./servicos/orcamentos"
 import { carregarTransacoes } from "./servicos/transacoes"
 import { DEFAULT_DATE, REF_MONTH, setReference } from "./utilitarios/datas"
 import { buildInsights } from "./utilitarios/calculos"
@@ -46,10 +47,10 @@ const demoProfile: IncomeProfile = { salary: 8200, recurring: 0, variable: 1850 
 const ehApi = (id: string) => /^\d+$/.test(id)
 
 // Gera recorrências pendentes e guarda os relatórios dos meses encerrados.
-// Contas da API: as transações vêm do back end (carregadas depois) e não geram recorrências locais,
+// Contas da API: transações e orçamentos vêm do back end (carregados depois) e não geram recorrências locais,
 // porque o back end só guarda "recorrente" (sim/não), sem a ligação com a transação de origem.
 const prepararDados = (data: ReturnType<typeof carregarDados>, daApi: boolean) => {
-  if (daApi) return { ...data, transactions: [] as Transaction[] }
+  if (daApi) return { ...data, transactions: [] as Transaction[], budgets: [] as Budget[] }
   const transactions = aplicarRecorrencias(data.transactions, DEFAULT_DATE)
   const reports = [
     ...snapshotsFaltantes(transactions, data.budgets, data.reports, REF_MONTH),
@@ -81,14 +82,16 @@ export default function App() {
   const [reports, setReports] = useState<ReportSnapshot[]>(boot.data.reports)
   const [erroApi, setErroApi] = useState("")
 
-  // Contas da API: busca as transações no back end ao entrar (e ao recarregar a página)
+  // Contas da API: busca transações e orçamentos do mês no back end ao entrar (e ao recarregar a página)
   useEffect(() => {
     if (!user || !ehApi(user.id)) return
     let ativo = true
-    carregarTransacoes(Number(user.id))
-      .then((lista) => {
+    const id = Number(user.id)
+    Promise.all([carregarTransacoes(id), carregarOrcamentos(id)])
+      .then(([lista, orcamentos]) => {
         if (!ativo) return
         setTransactionItems(lista)
+        setBudgetItems(orcamentos)
         setErroApi("")
       })
       .catch((e) => {
@@ -100,12 +103,13 @@ export default function App() {
   }, [user])
 
   // Persistência por usuário (histórico sem perda de dados). Convidado não salva.
-  // As transações de contas da API ficam só no back end.
+  // Transações e orçamentos de contas da API ficam só no back end.
   useEffect(() => {
     if (!user) return
+    const daApi = ehApi(user.id)
     salvarDados(user.id, {
-      transactions: ehApi(user.id) ? [] : transactionItems,
-      budgets: budgetItems,
+      transactions: daApi ? [] : transactionItems,
+      budgets: daApi ? [] : budgetItems,
       goals: goalItems,
       profile,
       reports,

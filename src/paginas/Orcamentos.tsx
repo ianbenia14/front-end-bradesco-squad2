@@ -1,9 +1,12 @@
 import { useState } from "react"
 import type { Budget, Goal, Transaction } from "../tipos"
+import { useUsuario } from "../contexto/usuario"
 import { REF_MONTH, monthLong } from "../utilitarios/datas"
 import { budgetCategories, budgetColorOf, budgetIcons } from "../dados/orcamentos"
 import { budgetStatus, budgetUsage, buildInsights, statusTone } from "../utilitarios/calculos"
 import { money, parseMoneyValue, toInputValue } from "../utilitarios/formatacao"
+import { mensagemDoErro } from "../servicos/api"
+import { excluirOrcamento, gravarOrcamento } from "../servicos/orcamentos"
 import { Alertas } from "../componentes/Alertas"
 import { Aviso } from "../componentes/Aviso"
 import { Botao } from "../componentes/Botao"
@@ -27,16 +30,23 @@ export function Orcamentos({
   transactionItems: Transaction[]
   goals: Goal[]
 }) {
+  const usuario = useUsuario()
+  // Só contas criadas no back end (id numérico) usam a API; convidado e contas antigas seguem locais
+  const idApi = Number(usuario.id)
+  const usaApi = Number.isInteger(idApi) && idApi > 0
+
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Budget | null>(null)
   const [deleting, setDeleting] = useState<Budget | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
+  const [erro, setErro] = useState("")
   const [toast, setToast] = useState<{ title: string; text: string } | null>(
     null,
   )
   const closeForm = () => {
     setFormOpen(false)
     setEditing(null)
+    setErro("")
   }
   const withSpent = items.map((budget) => ({
     ...budget,
@@ -51,6 +61,56 @@ export function Orcamentos({
   const remaining = totalLimit - totalSpent
   const insights = buildInsights(transactionItems, items, goals)
   const overallStatus = budgetStatus(overall)
+
+  const salvar = async (category: string, limit: number) => {
+    setErro("")
+    try {
+      if (editing) {
+        const atual: Budget = { ...editing, limit }
+        const salvo = usaApi ? await gravarOrcamento(idApi, atual, editing.id) : atual
+        setItems((current) => current.map((budget) => (budget.id === editing.id ? salvo : budget)))
+        setToast({
+          title: "Orçamento atualizado",
+          text: `O limite de ${editing.category} foi atualizado.`,
+        })
+      } else {
+        const novo: Budget = {
+          id: Date.now(),
+          category,
+          icon: budgetIcons[category] ?? "wallet",
+          limit,
+          color: budgetColorOf(category),
+        }
+        const salvo = usaApi ? await gravarOrcamento(idApi, novo, null) : novo
+        setItems((current) => [...current, salvo])
+        setToast({
+          title: "Orçamento criado",
+          text: `O orçamento de ${category} foi adicionado.`,
+        })
+      }
+      closeForm()
+    } catch (e) {
+      setErro(mensagemDoErro(e))
+    }
+  }
+
+  const excluir = async () => {
+    const alvo = deleting
+    if (!alvo) return
+    setErro("")
+    try {
+      if (usaApi) await excluirOrcamento(alvo.id)
+      setItems((current) => current.filter((budget) => budget.id !== alvo.id))
+      setToast({
+        title: "Orçamento excluído",
+        text: `O orçamento de ${alvo.category} foi removido.`,
+      })
+      setDeleting(null)
+    } catch (e) {
+      setErro(mensagemDoErro(e))
+    }
+  }
+
   return (
     <>
       <Cabecalho
@@ -150,6 +210,7 @@ export function Orcamentos({
                           className="danger"
                           onClick={() => {
                             setOpenId(null)
+                            setErro("")
                             setDeleting(items.find((b) => b.id === item.id) ?? null)
                           }}
                         >
@@ -187,6 +248,11 @@ export function Orcamentos({
                   </button>
                 }
               />
+              {erro && (
+                <p role="alert" style={{ margin: "0 0 12px", color: "#b45309" }}>
+                  {erro}
+                </p>
+              )}
               <form
                 key={editing ? editing.id : "new"}
                 onSubmit={(e) => {
@@ -194,32 +260,7 @@ export function Orcamentos({
                   const form = new FormData(e.currentTarget)
                   const limit = Math.abs(parseMoneyValue(form.get("limit")))
                   if (!limit) return
-                  if (editing) {
-                    setItems((current) =>
-                      current.map((budget) =>
-                        budget.id === editing.id ? { ...budget, limit } : budget,
-                      ),
-                    )
-                    setToast({
-                      title: "Orçamento atualizado",
-                      text: `O limite de ${editing.category} foi atualizado.`,
-                    })
-                  } else {
-                    const category = String(form.get("category") ?? "Outros")
-                    const budget: Budget = {
-                      id: Date.now(),
-                      category,
-                      icon: budgetIcons[category] ?? "wallet",
-                      limit,
-                      color: budgetColorOf(category),
-                    }
-                    setItems((current) => [...current, budget])
-                    setToast({
-                      title: "Orçamento criado",
-                      text: `O orçamento de ${category} foi adicionado.`,
-                    })
-                  }
-                  closeForm()
+                  void salvar(String(form.get("category") ?? "Outros"), limit)
                 }}
               >
                 {editing ? (
@@ -259,17 +300,31 @@ export function Orcamentos({
             </Modal>
       )}
       {deleting && (
-        <Modal onClose={() => setDeleting(null)} label="Confirmar exclusão">
+        <Modal
+          onClose={() => {
+            setDeleting(null)
+            setErro("")
+          }}
+          label="Confirmar exclusão"
+        >
               <TituloSecao title="Excluir orçamento" />
               <p style={{ margin: "8px 0 22px", color: "#64727b" }}>
                 Excluir o orçamento de "{deleting.category}"? Essa ação não pode
                 ser desfeita.
               </p>
+              {erro && (
+                <p role="alert" style={{ margin: "0 0 12px", color: "#b45309" }}>
+                  {erro}
+                </p>
+              )}
               <div className="modal-actions">
                 <Botao
                   type="button"
                   variant="secondary"
-                  onClick={() => setDeleting(null)}
+                  onClick={() => {
+                    setDeleting(null)
+                    setErro("")
+                  }}
                 >
                   Cancelar
                 </Botao>
@@ -277,14 +332,7 @@ export function Orcamentos({
                   type="button"
                   style={{ background: "#b45309" }}
                   onClick={() => {
-                    setItems((current) =>
-                      current.filter((budget) => budget.id !== deleting.id),
-                    )
-                    setToast({
-                      title: "Orçamento excluído",
-                      text: `O orçamento de ${deleting.category} foi removido.`,
-                    })
-                    setDeleting(null)
+                    void excluir()
                   }}
                 >
                   Excluir
