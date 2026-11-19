@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react"
 import type { Budget, Goal, IncomeProfile, PublicScreen, ReportSnapshot, Screen, Transaction } from "./tipos"
 import { AlertasContext } from "./contexto/alertas"
@@ -18,6 +19,8 @@ import {
   salvarSessao,
   sessaoAtual,
 } from "./servicos/autenticacao"
+import { carregarOrcamentos } from "./servicos/orcamentos"
+import { carregarMetas } from "./servicos/metas"
 import { carregarTransacoes } from "./servicos/transacoes"
 import { DEFAULT_DATE, REF_MONTH, setReference } from "./utilitarios/datas"
 import { buildInsights } from "./utilitarios/calculos"
@@ -46,15 +49,23 @@ const demoProfile: IncomeProfile = { salary: 8200, recurring: 0, variable: 1850 
 const ehApi = (id: string) => /^\d+$/.test(id)
 
 // Gera recorrências pendentes e guarda os relatórios dos meses encerrados.
-// Contas da API: as transações vêm do back end (carregadas depois) e não geram recorrências locais,
-// porque o back end só guarda "recorrente" (sim/não), sem a ligação com a transação de origem.
+// Contas da API carregam transações, orçamentos e metas diretamente do back end.
 const prepararDados = (data: ReturnType<typeof carregarDados>, daApi: boolean) => {
-  if (daApi) return { ...data, transactions: [] as Transaction[] }
+  if (daApi) {
+    return {
+      ...data,
+      transactions: [] as Transaction[],
+      budgets: [] as Budget[],
+      goals: [] as Goal[],
+    }
+  }
+
   const transactions = aplicarRecorrencias(data.transactions, DEFAULT_DATE)
   const reports = [
     ...snapshotsFaltantes(transactions, data.budgets, data.reports, REF_MONTH),
     ...data.reports,
   ]
+
   return { ...data, transactions, reports }
 }
 
@@ -63,6 +74,7 @@ export default function App() {
     const user = sessaoAtual()
     setReference(false)
     const rota = parseHash(window.location.hash)
+
     return {
       user,
       data: user ? prepararDados(carregarDados(user.id), ehApi(user.id)) : dadosVazios(),
@@ -70,6 +82,7 @@ export default function App() {
       publicScreen: !user && rota?.kind === "public" ? rota.screen : ("welcome" as PublicScreen),
     }
   })
+
   const [user, setUser] = useState<Usuario | null>(boot.user)
   const [guest, setGuest] = useState(false)
   const [publicScreen, setPublicScreen] = useState<PublicScreen>(boot.publicScreen)
@@ -81,32 +94,46 @@ export default function App() {
   const [reports, setReports] = useState<ReportSnapshot[]>(boot.data.reports)
   const [erroApi, setErroApi] = useState("")
 
-  // Contas da API: busca as transações no back end ao entrar (e ao recarregar a página)
+  // Contas da API: busca transações, orçamentos e metas ao entrar ou recarregar a página.
   useEffect(() => {
     if (!user || !ehApi(user.id)) return
+
     let ativo = true
-    carregarTransacoes(Number(user.id))
-      .then((lista) => {
+    const id = Number(user.id)
+
+    Promise.all([
+      carregarTransacoes(id),
+      carregarOrcamentos(id),
+      carregarMetas(id),
+    ])
+      .then(([lista, orcamentos, metas]) => {
         if (!ativo) return
+
         setTransactionItems(lista)
+        setBudgetItems(orcamentos)
+        setGoalItems(metas)
         setErroApi("")
       })
       .catch((e) => {
         if (ativo) setErroApi(mensagemDoErro(e))
       })
+
     return () => {
       ativo = false
     }
   }, [user])
 
-  // Persistência por usuário (histórico sem perda de dados). Convidado não salva.
-  // As transações de contas da API ficam só no back end.
+  // Persistência por usuário. Contas da API mantêm os dados no back end.
+  // Convidados e contas antigas continuam usando o armazenamento local.
   useEffect(() => {
     if (!user) return
+
+    const daApi = ehApi(user.id)
+
     salvarDados(user.id, {
-      transactions: ehApi(user.id) ? [] : transactionItems,
-      budgets: budgetItems,
-      goals: goalItems,
+      transactions: daApi ? [] : transactionItems,
+      budgets: daApi ? [] : budgetItems,
+      goals: daApi ? [] : goalItems,
       profile,
       reports,
     })
@@ -115,6 +142,7 @@ export default function App() {
   const startSession = (u: Usuario, remember: boolean) => {
     setReference(false)
     const data = prepararDados(carregarDados(u.id), ehApi(u.id))
+
     salvarSessao(u.id, remember)
     setTransactionItems(data.transactions)
     setBudgetItems(data.budgets)
@@ -155,13 +183,15 @@ export default function App() {
   const authed = Boolean(user) || guest
   const lastAuthed = useRef(authed)
 
-  // Histórico do navegador: o botão "voltar" navega entre as telas do site
+  // Histórico do navegador: o botão "voltar" navega entre as telas do site.
   useEffect(() => {
     const target = hashFor(authed, publicScreen, screen)
+
     if (window.location.hash !== target) {
       if (lastAuthed.current !== authed) window.history.replaceState(null, "", target)
       else window.history.pushState(null, "", target)
     }
+
     lastAuthed.current = authed
     window.scrollTo(0, 0)
   }, [authed, publicScreen, screen])
@@ -169,6 +199,7 @@ export default function App() {
   useEffect(() => {
     const onPop = () => {
       const rota = parseHash(window.location.hash)
+
       if (authed) {
         if (rota?.kind === "app") setScreen(rota.screen)
         else window.history.replaceState(null, "", hashFor(true, publicScreen, screen))
@@ -179,25 +210,31 @@ export default function App() {
         window.history.replaceState(null, "", "#/welcome")
       }
     }
+
     window.addEventListener("popstate", onPop)
     return () => window.removeEventListener("popstate", onPop)
   }, [authed, publicScreen, screen])
 
-  // Sem cadastro/sessão válida, só as telas públicas são acessíveis
+  // Sem cadastro/sessão válida, só as telas públicas são acessíveis.
   if (!authed) {
     if (publicScreen === "login")
       return <Login onLogin={startSession} goTo={setPublicScreen} onGuest={startGuest} />
+
     if (publicScreen === "register")
       return <Cadastro onRegistered={(u) => startSession(u, true)} goTo={setPublicScreen} />
+
     if (publicScreen === "tools") return <Ferramentas goTo={setPublicScreen} />
+
     if (publicScreen === "faq" || publicScreen === "privacy" || publicScreen === "terms")
       return <PaginaPublica kind={publicScreen} goTo={setPublicScreen} />
+
     return <BoasVindas goTo={setPublicScreen} onGuest={startGuest} />
   }
 
-  // "Apagar dados": nas contas da API, apaga também no back end (a conta continua)
+  // "Apagar dados": nas contas da API, apaga também no back end (a conta continua).
   const limparDados = async () => {
     if (!user) return
+
     if (ehApi(user.id)) {
       try {
         await usuariosApi.apagarDados(Number(user.id))
@@ -206,8 +243,10 @@ export default function App() {
         return
       }
     }
+
     excluirDados(user.id)
     const empty = dadosVazios()
+
     setTransactionItems(empty.transactions)
     setBudgetItems(empty.budgets)
     setGoalItems(empty.goals)
@@ -215,9 +254,10 @@ export default function App() {
     setReports([])
   }
 
-  // "Excluir conta": nas contas da API, exclui a conta no back end
+  // "Excluir conta": nas contas da API, exclui a conta no back end.
   const apagarConta = async () => {
     if (!user) return
+
     if (ehApi(user.id)) {
       try {
         await usuariosApi.excluir(Number(user.id))
@@ -226,11 +266,13 @@ export default function App() {
         return
       }
     }
+
     excluirConta(user.id)
     logout()
   }
 
   const alertas = buildInsights(transactionItems, budgetItems, goalItems)
+
   const current: UsuarioAtual = user
     ? { id: user.id, name: user.name, email: user.email, guest: false }
     : { id: "convidado", name: "Convidado", email: "", guest: true }
@@ -238,89 +280,104 @@ export default function App() {
   return (
     <UsuarioContext.Provider value={current}>
       <AlertasContext.Provider value={alertas}>
-      <div className="app-shell">
-        <BarraLateral screen={screen} setScreen={setScreen} onLogout={logout} />
-        <main className="main-area">
-          {guest && (
-            <div className="guest-banner" role="status">
-              <span>Modo convidado: os dados são de demonstração e não são salvos.</span>
-              <button
-                onClick={() => {
+        <div className="app-shell">
+          <BarraLateral screen={screen} setScreen={setScreen} onLogout={logout} />
+
+          <main className="main-area">
+            {guest && (
+              <div className="guest-banner" role="status">
+                <span>Modo convidado: os dados são de demonstração e não são salvos.</span>
+                <button
+                  onClick={() => {
+                    logout()
+                    setPublicScreen("register")
+                  }}
+                >
+                  Criar minha conta
+                </button>
+              </div>
+            )}
+
+            {erroApi && (
+              <p role="alert" style={{ margin: "12px 24px 0", color: "#b45309" }}>
+                {erroApi}
+              </p>
+            )}
+
+            {screen === "dashboard" && (
+              <Painel
+                navigate={setScreen}
+                items={transactionItems}
+                budgets={budgetItems}
+                goals={goalItems}
+              />
+            )}
+
+            {screen === "transactions" && (
+              <Transacoes items={transactionItems} setItems={setTransactionItems} />
+            )}
+
+            {screen === "budgets" && (
+              <Orcamentos
+                items={budgetItems}
+                setItems={setBudgetItems}
+                transactionItems={transactionItems}
+                goals={goalItems}
+              />
+            )}
+
+            {screen === "goals" && (
+              <Metas
+                items={goalItems}
+                setItems={setGoalItems}
+                transactionItems={transactionItems}
+              />
+            )}
+
+            {screen === "reports" && (
+              <Relatorios
+                items={transactionItems}
+                budgets={budgetItems}
+                reports={reports}
+                setReports={setReports}
+              />
+            )}
+
+            {screen === "education" && (
+              <Educacao items={transactionItems} budgets={budgetItems} goals={goalItems} />
+            )}
+
+            {screen === "planning" && (
+              <Planejamento
+                profile={profile}
+                setProfile={setProfile}
+                items={transactionItems}
+                goals={goalItems}
+              />
+            )}
+
+            {screen === "settings" && (
+              <Configuracoes
+                navigate={setScreen}
+                onLogout={logout}
+                onCreateAccount={() => {
                   logout()
                   setPublicScreen("register")
                 }}
-              >
-                Criar minha conta
-              </button>
-            </div>
-          )}
-          {erroApi && (
-            <p role="alert" style={{ margin: "12px 24px 0", color: "#b45309" }}>
-              {erroApi}
-            </p>
-          )}
-          {screen === "dashboard" && (
-            <Painel
-              navigate={setScreen}
-              items={transactionItems}
-              budgets={budgetItems}
-              goals={goalItems}
-            />
-          )}
-          {screen === "transactions" && (
-            <Transacoes items={transactionItems} setItems={setTransactionItems} />
-          )}
-          {screen === "budgets" && (
-            <Orcamentos
-              items={budgetItems}
-              setItems={setBudgetItems}
-              transactionItems={transactionItems}
-              goals={goalItems}
-            />
-          )}
-          {screen === "goals" && (
-            <Metas items={goalItems} setItems={setGoalItems} transactionItems={transactionItems} />
-          )}
-          {screen === "reports" && (
-            <Relatorios
-              items={transactionItems}
-              budgets={budgetItems}
-              reports={reports}
-              setReports={setReports}
-            />
-          )}
-          {screen === "education" && (
-            <Educacao items={transactionItems} budgets={budgetItems} goals={goalItems} />
-          )}
-          {screen === "planning" && (
-            <Planejamento
-              profile={profile}
-              setProfile={setProfile}
-              items={transactionItems}
-              goals={goalItems}
-            />
-          )}
-          {screen === "settings" && (
-            <Configuracoes
-              navigate={setScreen}
-              onLogout={logout}
-              onCreateAccount={() => {
-                logout()
-                setPublicScreen("register")
-              }}
-              onClearData={() => {
-                void limparDados()
-              }}
-              onDeleteAccount={() => {
-                void apagarConta()
-              }}
-            />
-          )}
-          {(screen === "faq" || screen === "privacy" || screen === "terms") && (
-            <Ajuda kind={screen} />
-          )}
-        </main>
-      </div>
+                onClearData={() => {
+                  void limparDados()
+                }}
+                onDeleteAccount={() => {
+                  void apagarConta()
+                }}
+              />
+            )}
+
+            {(screen === "faq" || screen === "privacy" || screen === "terms") && (
+              <Ajuda kind={screen} />
+            )}
+          </main>
+        </div>
       </AlertasContext.Provider>
     </UsuarioContext.Provider>
   )

@@ -1,9 +1,13 @@
-import { useState } from "react"
+
+import { useContext, useState } from "react"
 import type { Goal, Transaction } from "../tipos"
+import { UsuarioContext } from "../contexto/usuario"
 import { monthNames, toMonthInput } from "../utilitarios/datas"
 import { money, toInputValue } from "../utilitarios/formatacao"
 import { averageMonthlySaving } from "../utilitarios/calculos"
 import { goalInfo } from "../utilitarios/metas"
+import { mensagemDoErro } from "../servicos/api"
+import { gravarMeta, excluirMeta } from "../servicos/metas"
 import { Aviso } from "../componentes/Aviso"
 import { Botao } from "../componentes/Botao"
 import { Modal } from "../componentes/Modal"
@@ -22,31 +26,21 @@ export function Metas({
   items: Goal[]
   setItems: React.Dispatch<React.SetStateAction<Goal[]>>
 }) {
+  const usuario = useContext(UsuarioContext)
+  const usaApi = !usuario.guest && /^\d+$/.test(usuario.id)
+
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Goal | null>(null)
   const [deleting, setDeleting] = useState<Goal | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
-  const [toast, setToast] = useState<{ title: string; text: string } | null>(
-    null,
-  )
+  const [toast, setToast] = useState<{ title: string; text: string } | null>(null)
+  const [progressing, setProgressing] = useState<Goal | null>(null)
+
   const closeForm = () => {
     setFormOpen(false)
     setEditing(null)
   }
-  const [progressing, setProgressing] = useState<Goal | null>(null)
-  const registerProgress = (goal: Goal, value: number) => {
-    setItems((current) =>
-      current.map((item) =>
-        item.id === goal.id
-          ? { ...item, saved: Math.min(item.saved + value, item.target) }
-          : item,
-      ),
-    )
-    setToast({
-      title: "Progresso registrado",
-      text: `${goal.name} foi atualizada com sucesso.`,
-    })
-  }
+
   const parseMoney = (value: FormDataEntryValue | null) =>
     Number(
       String(value ?? "")
@@ -54,15 +48,48 @@ export function Metas({
         .replace(",", ".")
         .replace(/[^\d.]/g, ""),
     )
-  const pace = Math.max(0, averageMonthlySaving(transactionItems)) / Math.max(1, items.length)
+
+  const registerProgress = async (goal: Goal, value: number) => {
+    const atualizada: Goal = {
+      ...goal,
+      saved: Math.min(goal.saved + value, goal.target),
+    }
+
+    try {
+      const resultado = usaApi
+        ? await gravarMeta(Number(usuario.id), atualizada, goal.id)
+        : atualizada
+
+      setItems((current) =>
+        current.map((item) => item.id === goal.id ? resultado : item),
+      )
+
+      setToast({
+        title: "Progresso registrado",
+        text: `${goal.name} foi atualizada com sucesso.`,
+      })
+    } catch (error) {
+      setToast({
+        title: "Erro ao registrar progresso",
+        text: mensagemDoErro(error),
+      })
+    }
+  }
+
+  const pace =
+    Math.max(0, averageMonthlySaving(transactionItems)) /
+    Math.max(1, items.length)
+
   const totalSaved = items.reduce((total, goal) => total + goal.saved, 0)
   const totalTarget = items.reduce((total, goal) => total + goal.target, 0)
   const overall = totalTarget
     ? Math.round((totalSaved / totalTarget) * 100)
     : 0
+
   return (
     <>
       <Cabecalho title="Metas" subtitle="Transforme seus planos em conquistas." />
+
       <div className="page-content">
         <div className="page-heading-actions">
           <div>
@@ -75,33 +102,36 @@ export function Metas({
               </small>
             </h2>
           </div>
+
           <Botao onClick={() => setFormOpen(true)}>
             <Icone name="plus" size={18} /> Nova meta
           </Botao>
         </div>
+
         {items.length ? (
           <div className="goals-grid">
             {items.map((goal) => {
               const info = goalInfo(goal, pace)
               const percent = info.percent
+
               return (
                 <Cartao className="goal-card" key={goal.id}>
                   <div className="goal-top">
                     <span className={`goal-icon ${goal.color}`}>
                       <Icone name={goal.icon} />
                     </span>
+
                     <div className="row-menu-wrap">
                       <button
                         className="more-button"
                         aria-label={`Opções para ${goal.name}`}
                         aria-haspopup="menu"
                         aria-expanded={openId === goal.id}
-                        onClick={() =>
-                          setOpenId(openId === goal.id ? null : goal.id)
-                        }
+                        onClick={() => setOpenId(openId === goal.id ? null : goal.id)}
                       >
                         •••
                       </button>
+
                       {openId === goal.id && (
                         <div className="row-menu" role="menu">
                           <button
@@ -113,6 +143,7 @@ export function Metas({
                           >
                             Editar
                           </button>
+
                           <button
                             role="menuitem"
                             className="danger"
@@ -127,17 +158,21 @@ export function Metas({
                       )}
                     </div>
                   </div>
+
                   <h3>{goal.name}</h3>
+
                   <div className="goal-amount">
                     <strong>{money(goal.saved)}</strong>
                     <span>de {money(goal.target)}</span>
                   </div>
+
                   <div className="progress">
                     <i
                       className={goal.color}
                       style={{ width: `${Math.min(100, percent)}%` }}
                     />
                   </div>
+
                   <div className="goal-meta">
                     <span>
                       <small>PROGRESSO</small>
@@ -152,6 +187,7 @@ export function Metas({
                       <strong>{goal.deadline}</strong>
                     </span>
                   </div>
+
                   <div className="goal-meta goal-calc">
                     <span>
                       <small>NECESSÁRIO POR MÊS</small>
@@ -168,6 +204,7 @@ export function Metas({
                       </strong>
                     </span>
                   </div>
+
                   <Botao
                     variant="secondary"
                     onClick={() => setProgressing(goal)}
@@ -183,6 +220,7 @@ export function Metas({
             Nenhuma meta ainda. Clique em "Nova meta" para começar.
           </div>
         )}
+
         <Cartao className="goals-summary">
           <div className="summary-illustration">
             <Icone name="goal" size={34} />
@@ -198,165 +236,214 @@ export function Metas({
           </div>
         </Cartao>
       </div>
+
       {(formOpen || editing) && (
         <Modal onClose={closeForm} label="Formulário">
-              <TituloSecao
-                title={editing ? "Editar meta" : "Nova meta"}
-                action={
-                  <button className="icon-button" aria-label="Fechar" onClick={closeForm}>
-                    <Icone name="x" />
-                  </button>
-                }
-              />
-              <form
-                key={editing ? editing.id : "new"}
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  const form = new FormData(e.currentTarget)
-                  const target = Math.abs(parseMoney(form.get("target")))
-                  const savedValue = Math.abs(parseMoney(form.get("saved")))
-                  if (!target) return
-                  const [year, month] = String(
-                    form.get("deadline") ?? "2027-12",
-                  ).split("-")
-                  const goal: Goal = {
-                    id: editing ? editing.id : Date.now(),
-                    name: String(form.get("name")),
-                    icon: editing ? editing.icon : "goal",
-                    saved: Math.min(savedValue || 0, target),
-                    target,
-                    deadline: `${monthNames[month] ?? "Dez"} ${year}`,
-                    kind: form.get("reserve") === "on" ? "reserve" : "other",
-                    color: editing
-                      ? editing.color
-                      : items.length % 2 === 0
-                        ? "green"
-                        : "blue",
-                  }
+          <TituloSecao
+            title={editing ? "Editar meta" : "Nova meta"}
+            action={
+              <button className="icon-button" aria-label="Fechar" onClick={closeForm}>
+                <Icone name="x" />
+              </button>
+            }
+          />
+
+          <form
+            key={editing ? editing.id : "new"}
+            onSubmit={async (e) => {
+              e.preventDefault()
+
+              const form = new FormData(e.currentTarget)
+              const target = Math.abs(parseMoney(form.get("target")))
+              const savedValue = Math.abs(parseMoney(form.get("saved")))
+
+              if (!target) return
+
+              const [year, month] = String(
+                form.get("deadline") ?? "2027-12",
+              ).split("-")
+
+              const goal: Goal = {
+                id: editing ? editing.id : Date.now(),
+                name: String(form.get("name")),
+                icon: editing ? editing.icon : "goal",
+                saved: Math.min(savedValue || 0, target),
+                target,
+                deadline: `${monthNames[month] ?? "Dez"} ${year}`,
+                kind: form.get("reserve") === "on" ? "reserve" : "other",
+                color: editing
+                  ? editing.color
+                  : items.length % 2 === 0
+                    ? "green"
+                    : "blue",
+              }
+
+              try {
+                if (usaApi) {
+                  const salva = await gravarMeta(
+                    Number(usuario.id),
+                    goal,
+                    editing ? editing.id : null,
+                  )
+
                   setItems((current) =>
                     editing
-                      ? current.map((item) =>
-                          item.id === goal.id ? goal : item,
-                        )
+                      ? current.map((item) => item.id === editing.id ? salva : item)
+                      : [...current, salva],
+                  )
+                } else {
+                  setItems((current) =>
+                    editing
+                      ? current.map((item) => item.id === goal.id ? goal : item)
                       : [...current, goal],
                   )
-                  setToast({
-                    title: editing ? "Meta atualizada" : "Meta criada",
-                    text: `${goal.name} foi ${editing ? "atualizada" : "adicionada"} com sucesso.`,
-                  })
-                  closeForm()
-                }}
-              >
-                <Campo
-                  label="Nome da meta"
-                  name="name"
-                  placeholder="Ex.: Comprar um notebook"
-                  defaultValue={editing?.name ?? ""}
-                  required
-                />
-                <div className="two-fields">
-                  <Campo
-                    label="Valor da meta"
-                    name="target"
-                    inputMode="decimal"
-                    placeholder="R$ 0,00"
-                    defaultValue={editing ? toInputValue(editing.target) : ""}
-                    required
-                  />
-                  <Campo
-                    label="Já guardado"
-                    name="saved"
-                    inputMode="decimal"
-                    placeholder="R$ 0,00"
-                    defaultValue={editing ? toInputValue(editing.saved) : "0,00"}
-                  />
-                </div>
-                <Campo
-                  label="Prazo"
-                  name="deadline"
-                  type="month"
-                  defaultValue={
-                    editing ? toMonthInput(editing.deadline) : "2027-12"
-                  }
-                  required
-                />
-                <label className="check-label">
-                  <input
-                    type="checkbox"
-                    name="reserve"
-                    defaultChecked={editing ? editing.kind === "reserve" : false}
-                  />
-                  Esta é a minha reserva de emergência
-                </label>
-                <div className="modal-actions">
-                  <Botao
-                    type="button"
-                    variant="secondary"
-                    onClick={closeForm}
-                  >
-                    Cancelar
-                  </Botao>
-                  <Botao type="submit">
-                    {editing ? "Salvar alterações" : "Criar meta"}
-                  </Botao>
-                </div>
-              </form>
-            </Modal>
+                }
+
+                setToast({
+                  title: editing ? "Meta atualizada" : "Meta criada",
+                  text: `${goal.name} foi ${editing ? "atualizada" : "adicionada"} com sucesso.`,
+                })
+
+                closeForm()
+              } catch (error) {
+                setToast({
+                  title: "Erro ao salvar meta",
+                  text: mensagemDoErro(error),
+                })
+              }
+            }}
+          >
+            <Campo
+              label="Nome da meta"
+              name="name"
+              placeholder="Ex.: Comprar um notebook"
+              defaultValue={editing?.name ?? ""}
+              required
+            />
+
+            <div className="two-fields">
+              <Campo
+                label="Valor da meta"
+                name="target"
+                inputMode="decimal"
+                placeholder="R$ 0,00"
+                defaultValue={editing ? toInputValue(editing.target) : ""}
+                required
+              />
+              <Campo
+                label="Já guardado"
+                name="saved"
+                inputMode="decimal"
+                placeholder="R$ 0,00"
+                defaultValue={editing ? toInputValue(editing.saved) : "0,00"}
+              />
+            </div>
+
+            <Campo
+              label="Prazo"
+              name="deadline"
+              type="month"
+              defaultValue={editing ? toMonthInput(editing.deadline) : "2027-12"}
+              required
+            />
+
+            <label className="check-label">
+              <input
+                type="checkbox"
+                name="reserve"
+                defaultChecked={editing ? editing.kind === "reserve" : false}
+              />
+              Esta é a minha reserva de emergência
+            </label>
+
+            <div className="modal-actions">
+              <Botao type="button" variant="secondary" onClick={closeForm}>
+                Cancelar
+              </Botao>
+              <Botao type="submit">
+                {editing ? "Salvar alterações" : "Criar meta"}
+              </Botao>
+            </div>
+          </form>
+        </Modal>
       )}
+
       {deleting && (
         <Modal onClose={() => setDeleting(null)} label="Confirmar exclusão">
-              <TituloSecao title="Excluir meta" />
-              <p style={{ margin: "8px 0 22px", color: "#64727b" }}>
-                Excluir a meta "{deleting.name}"? Essa ação não pode ser
-                desfeita.
-              </p>
-              <div className="modal-actions">
-                <Botao
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setDeleting(null)}
-                >
-                  Cancelar
-                </Botao>
-                <Botao
-                  type="button"
-                  style={{ background: "#b45309" }}
-                  onClick={() => {
-                    setItems((current) =>
-                      current.filter((item) => item.id !== deleting.id),
-                    )
-                    setToast({
-                      title: "Meta excluída",
-                      text: `${deleting.name} foi removida.`,
-                    })
-                    setDeleting(null)
-                  }}
-                >
-                  Excluir
-                </Botao>
-              </div>
-            </Modal>
+          <TituloSecao title="Excluir meta" />
+          <p style={{ margin: "8px 0 22px", color: "#64727b" }}>
+            Excluir a meta "{deleting.name}"? Essa ação não pode ser desfeita.
+          </p>
+
+          <div className="modal-actions">
+            <Botao type="button" variant="secondary" onClick={() => setDeleting(null)}>
+              Cancelar
+            </Botao>
+            <Botao
+              type="button"
+              style={{ background: "#b45309" }}
+              onClick={async () => {
+                try {
+                  if (usaApi) await excluirMeta(deleting.id)
+
+                  setItems((current) =>
+                    current.filter((item) => item.id !== deleting.id),
+                  )
+
+                  setToast({
+                    title: "Meta excluída",
+                    text: `${deleting.name} foi removida.`,
+                  })
+
+                  setDeleting(null)
+                } catch (error) {
+                  setToast({
+                    title: "Erro ao excluir meta",
+                    text: mensagemDoErro(error),
+                  })
+                }
+              }}
+            >
+              Excluir
+            </Botao>
+          </div>
+        </Modal>
       )}
+
       {progressing && (
         <Modal onClose={() => setProgressing(null)} label="Formulário">
-              <TituloSecao title={`Registrar progresso: ${progressing.name}`} />
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  const value = Math.abs(parseMoney(new FormData(e.currentTarget).get("value")))
-                  if (!value) return
-                  registerProgress(progressing, value)
-                  setProgressing(null)
-                }}
-              >
-                <Campo label="Valor guardado agora" name="value" inputMode="decimal" placeholder="R$ 0,00" required />
-                <div className="modal-actions">
-                  <Botao type="button" variant="secondary" onClick={() => setProgressing(null)}>Cancelar</Botao>
-                  <Botao type="submit">Registrar</Botao>
-                </div>
-              </form>
-            </Modal>
+          <TituloSecao title={`Registrar progresso: ${progressing.name}`} />
+
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault()
+              const value = Math.abs(
+                parseMoney(new FormData(e.currentTarget).get("value")),
+              )
+              if (!value) return
+
+              await registerProgress(progressing, value)
+              setProgressing(null)
+            }}
+          >
+            <Campo
+              label="Valor guardado agora"
+              name="value"
+              inputMode="decimal"
+              placeholder="R$ 0,00"
+              required
+            />
+
+            <div className="modal-actions">
+              <Botao type="button" variant="secondary" onClick={() => setProgressing(null)}>
+                Cancelar
+              </Botao>
+              <Botao type="submit">Registrar</Botao>
+            </div>
+          </form>
+        </Modal>
       )}
+
       <Aviso toast={toast} onClose={() => setToast(null)} />
     </>
   )
