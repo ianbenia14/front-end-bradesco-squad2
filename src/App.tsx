@@ -340,6 +340,7 @@ export default function App() {
                 budgets={budgetItems}
                 reports={reports}
                 setReports={setReports}
+                usuarioId={user && ehApi(user.id) ? Number(user.id) : null}
               />
             )}
 
