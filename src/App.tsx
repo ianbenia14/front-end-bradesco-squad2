@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react"
 import type { Budget, Goal, IncomeProfile, PublicScreen, ReportSnapshot, Screen, Transaction } from "./tipos"
 import { AlertasContext } from "./contexto/alertas"
 import { UsuarioContext, type UsuarioAtual } from "./contexto/usuario"
@@ -94,7 +94,7 @@ export default function App() {
   const [reports, setReports] = useState<ReportSnapshot[]>(boot.data.reports)
   const [erroApi, setErroApi] = useState("")
 
-  // Contas da API: busca transações, orçamentos e metas ao entrar ou recarregar a página.
+  // Contas da API: busca transações, orçamentos, metas e perfil ao entrar ou recarregar a página.
   useEffect(() => {
     if (!user || !ehApi(user.id)) return
 
@@ -105,13 +105,22 @@ export default function App() {
       carregarTransacoes(id),
       carregarOrcamentos(id),
       carregarMetas(id),
+      usuariosApi.buscar(id),
     ])
-      .then(([lista, orcamentos, metas]) => {
+      .then(([lista, orcamentos, metas, conta]) => {
         if (!ativo) return
 
         setTransactionItems(lista)
         setBudgetItems(orcamentos)
         setGoalItems(metas)
+
+        // Carrega os três valores diretamente do banco, inclusive quando forem zero.
+        setProfile({
+          salary: conta.rendaMensal ?? 0,
+          recurring: conta.receitasRecorrentes ?? 0,
+          variable: conta.receitasVariaveis ?? 0,
+        })
+
         setErroApi("")
       })
       .catch((e) => {
@@ -254,6 +263,24 @@ export default function App() {
     setReports([])
   }
 
+  // Planejamento: grava o perfil de renda na conta (contas da API); convidado só atualiza a tela.
+  const salvarPerfil: Dispatch<SetStateAction<IncomeProfile>> = (valor) => {
+    const novo = typeof valor === "function" ? valor(profile) : valor
+    setProfile(novo)
+
+    if (!user || !ehApi(user.id)) return
+
+    usuariosApi
+      .atualizar(Number(user.id), {
+        nome: user.name,
+        rendaMensal: novo.salary,
+        receitasRecorrentes: novo.recurring,
+        receitasVariaveis: novo.variable,
+      })
+      .then(() => setErroApi(""))
+      .catch((e) => setErroApi(mensagemDoErro(e)))
+  }
+
   // "Excluir conta": nas contas da API, exclui a conta no back end.
   const apagarConta = async () => {
     if (!user) return
@@ -351,7 +378,7 @@ export default function App() {
             {screen === "planning" && (
               <Planejamento
                 profile={profile}
-                setProfile={setProfile}
+                setProfile={salvarPerfil}
                 items={transactionItems}
                 goals={goalItems}
               />

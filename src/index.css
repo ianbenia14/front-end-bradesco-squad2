@@ -743,3 +743,15 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
     width: 100%;
   }
 }
+/* Melhor espaçamento do cartão de mapeamento salarial */
+.plan-form-card {
+  padding: 24px;
+}
+
+.plan-form-card .section-title {
+  margin-bottom: 18px;
+}
+
+.plan-form {
+  gap: 16px;
+}

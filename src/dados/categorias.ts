@@ -1,3 +1,4 @@
+
 import type { IconName } from "../tipos"
 
 export const expenseCategories = [
@@ -9,6 +10,7 @@ export const expenseCategories = [
   "Lazer",
   "Compras",
   "Investimentos",
+  "Bens",
   "Assinaturas",
   "Impostos",
   "Contas e Serviços",
@@ -26,6 +28,7 @@ export const categoryIcons: Record<string, IconName> = {
   Lazer: "goal",
   Compras: "shopping",
   Investimentos: "chart",
+  Bens: "home",
   Assinaturas: "calendar",
   Impostos: "transaction",
   "Contas e Serviços": "settings",
@@ -42,6 +45,7 @@ export const categoryColors: Record<string, string> = {
   Lazer: "purple",
   Compras: "purple",
   Investimentos: "green",
+  Bens: "blue",
   Assinaturas: "orange",
   Impostos: "gray",
   "Contas e Serviços": "gray",
@@ -96,6 +100,21 @@ export const suggestCategory = (establishment: string) => {
 }
 
 // Classificação 50/30/20 (RF 3.7)
-export const needsCategories = ["Moradia", "Alimentação", "Transporte", "Saúde", "Educação", "Contas e Serviços", "Impostos"]
-export const wantsCategories = ["Lazer", "Compras", "Assinaturas", "Outros"]
+export const needsCategories = [
+  "Moradia",
+  "Alimentação",
+  "Transporte",
+  "Saúde",
+  "Educação",
+  "Contas e Serviços",
+  "Impostos",
+]
+
+export const wantsCategories = [
+  "Lazer",
+  "Compras",
+  "Assinaturas",
+  "Outros",
+]
+
 export const savingsCategories = ["Investimentos"]
