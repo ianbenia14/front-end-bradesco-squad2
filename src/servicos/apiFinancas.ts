@@ -12,6 +12,8 @@ export interface Usuario {
   nome: string
   email: string
   rendaMensal: number
+  receitasRecorrentes?: number
+  receitasVariaveis?: number
   criadoEm: string
 }
 export interface UsuarioEntrada {
@@ -196,8 +198,10 @@ export interface Investimentos {
 export const usuariosApi = {
   criar: (dados: UsuarioEntrada) => api.post<Usuario>('/api/usuarios', dados),
   buscar: (id: number) => api.get<Usuario>(`/api/usuarios/${id}`),
-  atualizar: (id: number, dados: { nome: string; rendaMensal: number }) =>
-    api.put<Usuario>(`/api/usuarios/${id}`, dados),
+  atualizar: (
+    id: number,
+    dados: { nome: string; rendaMensal: number; receitasRecorrentes?: number; receitasVariaveis?: number },
+  ) => api.put<Usuario>(`/api/usuarios/${id}`, dados),
   excluir: (id: number) => api.delete(`/api/usuarios/${id}`),
   apagarDados: (id: number) => api.delete(`/api/usuarios/${id}/dados`),
   login: (email: string, senha: string) =>
